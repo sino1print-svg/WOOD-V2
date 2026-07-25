@@ -1,0 +1,7 @@
+export {
+  COVER_PROMPT_MODULE,
+  COVER_PROMPT_SECTIONS,
+  COVER_PROMPT_TEMPLATE,
+  COVER_PROMPT_VARIABLES,
+  type CoverPromptVariable,
+} from './cover';

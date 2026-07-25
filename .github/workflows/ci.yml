@@ -1,0 +1,30 @@
+name: CI
+
+# CI foundation — 12_IMPLEMENTATION_GUIDE §36. Runs from the repository ROOT.
+# Fail-closed: any red stage blocks merge. Uses the pinned Node (.nvmrc) and npm
+# cache keyed on the root package-lock.json. `verify:full` runs both npm audits,
+# typecheck, lint, format:check, test, deterministic-build verification, and build.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install (clean, reproducible)
+        run: npm ci
+
+      - name: Full verification (audits + typecheck + lint + format + test + determinism + build)
+        run: npm run verify:full

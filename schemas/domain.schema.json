@@ -1,0 +1,2009 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mpd.local/schemas/domain.schema.json",
+  "title": "MockupPhotoshootDirectorDomain",
+  "description": "Structural schemas for persisted domain entities (03_DATA_MODELS_FINAL). Branded IDs are generic non-empty strings (no invented semantic prefixes). Runtime-only EvaluationContext/Resolved* are intentionally absent.",
+  "$defs": {
+    "AudienceConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "forbidAdultModels": {
+          "type": "boolean"
+        },
+        "kidsOnly": {
+          "type": "boolean"
+        },
+        "allowedAudiences": {
+          "type": "array",
+          "items": {
+            "enum": ["kids", "adult", "unisex", "teen", "all"]
+          }
+        }
+      }
+    },
+    "PrintAreaProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "position",
+        "minSizeRatio",
+        "centeringTolerance",
+        "centered",
+        "maxShadowCoverage",
+        "forbiddenOverlaps"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "enum": ["center_chest", "full_front", "left_chest", "center_back"]
+        },
+        "minSizeRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "centeringTolerance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "centered": {
+          "type": "boolean"
+        },
+        "maxShadowCoverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "forbiddenOverlaps": {
+          "type": "array",
+          "items": {
+            "enum": ["hands", "hair", "props", "deep_folds", "shadows"]
+          }
+        }
+      }
+    },
+    "Product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "schemaVersion",
+        "kind",
+        "name",
+        "type",
+        "allowedViews",
+        "printAreaProfile",
+        "audienceConstraints",
+        "defaultColors",
+        "expandable"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string"
+        },
+        "allowedViews": {
+          "type": "array",
+          "items": {
+            "enum": ["front", "back", "side", "flat_detail"]
+          },
+          "minItems": 1
+        },
+        "printAreaProfile": {
+          "$ref": "#/$defs/PrintAreaProfile"
+        },
+        "audienceConstraints": {
+          "$ref": "#/$defs/AudienceConstraints"
+        },
+        "defaultColors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "expandable": {
+          "const": true
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "productHash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "Season": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "schemaVersion",
+        "kind",
+        "name",
+        "sceneLibraryRef",
+        "decorConstraints",
+        "heroSceneConstraints",
+        "forbiddenSeasonDecor"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sceneLibraryRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decorConstraints": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "heroSceneConstraints": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "forbiddenSeasonDecor": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "DedupSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sceneTemplateId", "poseId", "cameraAngle", "compositionId", "hash"],
+      "properties": {
+        "sceneTemplateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "poseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cameraAngle": {
+          "enum": [
+            "eye_level",
+            "high_angle",
+            "low_angle",
+            "top_down",
+            "three_quarter",
+            "straight_on"
+          ]
+        },
+        "compositionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "PromptMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "templateVersion",
+        "moduleVersions",
+        "generatedAt",
+        "generatorVersion",
+        "promptChecksum"
+      ],
+      "properties": {
+        "templateVersion": {
+          "type": "string"
+        },
+        "moduleVersions": {
+          "type": "object"
+        },
+        "generatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatorVersion": {
+          "type": "string"
+        },
+        "promptChecksum": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "OutputA": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sceneId",
+        "garment",
+        "color",
+        "view",
+        "status",
+        "forbidden",
+        "promptText",
+        "contentHash",
+        "generatedAt",
+        "promptHash",
+        "renderHash",
+        "promptMeta"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sceneId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "garment": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string",
+          "minLength": 1
+        },
+        "view": {
+          "enum": ["front", "back", "side", "flat_detail"]
+        },
+        "status": {
+          "enum": ["pending", "generated", "stale"]
+        },
+        "forbidden": {
+          "type": "array",
+          "items": {
+            "enum": ["artwork", "logo", "watermark", "typography"]
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "promptText": {
+          "type": "string"
+        },
+        "contentHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedAt": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "promptHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "renderHash": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "promptMeta": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PromptMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "OutputB": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sceneId",
+        "sourceOutputAId",
+        "artworkId",
+        "onlyArtworkChanges",
+        "sourceContentHash",
+        "status",
+        "promptText",
+        "generatedAt",
+        "promptHash",
+        "renderHash",
+        "sourceHash",
+        "contentHash",
+        "promptMeta"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sceneId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceOutputAId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artworkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "onlyArtworkChanges": {
+          "const": true
+        },
+        "sourceContentHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["pending", "generated", "stale"]
+        },
+        "promptText": {
+          "type": "string"
+        },
+        "generatedAt": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "promptHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "renderHash": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "promptMeta": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PromptMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sessionId",
+        "templateId",
+        "productId",
+        "locationId",
+        "lightingId",
+        "decorIds",
+        "propIds",
+        "cameraId",
+        "compositionId",
+        "poseId",
+        "displayMethod",
+        "paletteColorId",
+        "seasonId",
+        "printAreaRulesRef",
+        "view",
+        "dedupSignature",
+        "outputA",
+        "outputB",
+        "sceneVersion",
+        "sceneHash",
+        "sceneFingerprint"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "templateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "productId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lightingId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decorIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "propIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "cameraId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compositionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "poseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayMethod": {
+          "enum": ["on_model", "flat_lay", "hanger", "folded", "ghost_mannequin", "hanging"]
+        },
+        "paletteColorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seasonId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "printAreaRulesRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "view": {
+          "enum": ["front", "back", "side", "flat_detail"]
+        },
+        "dedupSignature": {
+          "$ref": "#/$defs/DedupSignature"
+        },
+        "outputA": {
+          "$ref": "#/$defs/OutputA"
+        },
+        "outputB": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/OutputB"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sceneVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sceneHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sceneFingerprint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "CoverMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productIds",
+        "colors",
+        "mockupCount",
+        "views",
+        "seasonId",
+        "digitalProductStatus",
+        "primaryProduct",
+        "primaryColor",
+        "primaryView",
+        "primaryAudience"
+      ],
+      "properties": {
+        "productIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "mockupCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "views": {
+          "type": "array",
+          "items": {
+            "enum": ["front", "back", "side", "flat_detail"]
+          }
+        },
+        "seasonId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digitalProductStatus": {
+          "type": "boolean"
+        },
+        "primaryProduct": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primaryColor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primaryView": {
+          "enum": ["front", "back", "side", "flat_detail"]
+        },
+        "primaryAudience": {
+          "enum": ["kids", "adult", "unisex", "teen", "all"]
+        }
+      }
+    },
+    "MainCover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sessionId",
+        "sourceSaleImageIds",
+        "layout",
+        "readMetadata",
+        "status",
+        "promptText",
+        "generatedAt",
+        "promptHash",
+        "renderHash",
+        "coverHash",
+        "promptMeta"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceSaleImageIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "layout": {
+          "enum": ["single", "duo", "triptych", "grid_2x2", "grid_2x3", "grid_3x3", "mosaic"]
+        },
+        "readMetadata": {
+          "$ref": "#/$defs/CoverMetadata"
+        },
+        "status": {
+          "enum": ["pending", "generated", "stale"]
+        },
+        "promptText": {
+          "type": "string"
+        },
+        "generatedAt": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "promptHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "renderHash": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "promptMeta": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PromptMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "GenerationProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalScenes",
+        "outputAGenerated",
+        "outputBGenerated",
+        "coverGenerated",
+        "allOutputAReady"
+      ],
+      "properties": {
+        "totalScenes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputAGenerated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputBGenerated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coverGenerated": {
+          "type": "boolean"
+        },
+        "allOutputAReady": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Color": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "hex"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "hex": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        }
+      }
+    },
+    "ColorSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["colorIds", "locked"],
+      "properties": {
+        "colorIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "paletteId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "Palette": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "schemaVersion", "name", "colorIds", "lockRules"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "colorIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "lockRules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "Group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sessionId", "groupBy", "key", "sceneIds", "groupPromptText"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "groupBy": {
+          "enum": ["product", "color", "view"]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sceneIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "groupPromptText": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupPromptMeta": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PromptMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ValidationCheckResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check", "passed"],
+      "properties": {
+        "check": {
+          "enum": [
+            "season",
+            "audience",
+            "products",
+            "colors",
+            "scene_count",
+            "duplicate_scenes",
+            "print_rules",
+            "cover_data"
+          ]
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ValidationFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check",
+        "field",
+        "code",
+        "message",
+        "severity",
+        "ruleId",
+        "priorityClass",
+        "domain",
+        "originEngine"
+      ],
+      "properties": {
+        "check": {
+          "enum": [
+            "season",
+            "audience",
+            "products",
+            "colors",
+            "scene_count",
+            "duplicate_scenes",
+            "print_rules",
+            "cover_data"
+          ]
+        },
+        "field": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "enum": ["blocking", "warning"]
+        },
+        "ruleId": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priorityClass": {
+          "oneOf": [
+            {
+              "enum": [1, 2, 3, 4, 5]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "domain": {
+          "oneOf": [
+            {
+              "enum": [
+                "print_area",
+                "background",
+                "output",
+                "model",
+                "decor",
+                "garment_color",
+                "composition",
+                "cover",
+                "palette",
+                "product",
+                "validation",
+                "artwork",
+                "prompt",
+                "session",
+                "export",
+                "group"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "originEngine": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ValidationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sessionId", "evaluatedAt", "passed", "checks", "failures"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evaluatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValidationCheckResult"
+          }
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValidationFailure"
+          }
+        }
+      }
+    },
+    "RetentionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["keep_all", "keep_last_n", "keep_days"]
+        },
+        "keepN": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "keepDays": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "keep_last_n"
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["keepN"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "keep_days"
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["keepDays"]
+          }
+        }
+      ]
+    },
+    "SessionFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash", "components"],
+      "properties": {
+        "hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "components": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "season",
+            "audience",
+            "productIds",
+            "colorIds",
+            "colorLocked",
+            "requestedSceneCount",
+            "sceneFingerprints",
+            "artworkContentHashes",
+            "ruleSetVersions",
+            "isDigitalProduct"
+          ],
+          "properties": {
+            "season": {
+              "type": "string",
+              "minLength": 1
+            },
+            "audience": {
+              "enum": ["kids", "adult", "unisex", "teen", "all"]
+            },
+            "productIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "colorIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "colorLocked": {
+              "type": "boolean"
+            },
+            "requestedSceneCount": {
+              "type": "integer"
+            },
+            "sceneFingerprints": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "artworkContentHashes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "ruleSetVersions": {
+              "type": "object"
+            },
+            "isDigitalProduct": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "VersionSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "versionId",
+        "projectId",
+        "timestamp",
+        "parentVersionId",
+        "projectState",
+        "reason",
+        "stateHash"
+      ],
+      "properties": {
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timestamp": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentVersionId": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectState": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "enum": ["generated", "manual_save", "duplicate"]
+        },
+        "stateHash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "Artwork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "projectId",
+        "fileName",
+        "pngAssetRef",
+        "uploadedAt",
+        "format",
+        "hasTransparency",
+        "widthPx",
+        "heightPx",
+        "aspectRatio",
+        "contentHash"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "pngAssetRef": {
+          "type": "string"
+        },
+        "uploadedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "const": "png"
+        },
+        "hasTransparency": {
+          "type": "boolean"
+        },
+        "widthPx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "heightPx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dpi": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "aspectRatio": {
+          "type": "number"
+        },
+        "contentHash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "RuleCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "operator", "value"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operator": {
+          "enum": [
+            "eq",
+            "neq",
+            "in",
+            "not_in",
+            "includes",
+            "excludes",
+            "count_eq",
+            "count_gte",
+            "count_lte",
+            "num_eq",
+            "num_gte",
+            "num_lte",
+            "num_gt",
+            "num_lt",
+            "exists",
+            "is_null"
+          ]
+        },
+        "value": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ConditionNode": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RuleCondition"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all"],
+          "properties": {
+            "all": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ConditionNode"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any"],
+          "properties": {
+            "any": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ConditionNode"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not"],
+          "properties": {
+            "not": {
+              "$ref": "#/$defs/ConditionNode"
+            }
+          }
+        }
+      ]
+    },
+    "ContextRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref"],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "RuleTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "ref"],
+          "properties": {
+            "kind": {
+              "const": "contextRef"
+            },
+            "ref": {
+              "$ref": "#/$defs/ContextRef"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "dimension"],
+          "properties": {
+            "kind": {
+              "const": "dimension"
+            },
+            "dimension": {
+              "enum": [
+                "product",
+                "location",
+                "lighting",
+                "decor",
+                "props",
+                "camera",
+                "composition",
+                "pose",
+                "display_method",
+                "garment_color",
+                "view",
+                "print_area_rules",
+                "season"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "symbol"],
+          "properties": {
+            "kind": {
+              "const": "symbolic"
+            },
+            "symbol": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "NumericExpression": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "ref"],
+          "properties": {
+            "kind": {
+              "const": "contextRef"
+            },
+            "ref": {
+              "$ref": "#/$defs/ContextRef"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "op", "left", "right"],
+          "properties": {
+            "kind": {
+              "const": "binary"
+            },
+            "op": {
+              "enum": ["+", "-", "*", "/"]
+            },
+            "left": {
+              "$ref": "#/$defs/NumericExpression"
+            },
+            "right": {
+              "$ref": "#/$defs/NumericExpression"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "fn", "args"],
+          "properties": {
+            "kind": {
+              "const": "function"
+            },
+            "fn": {
+              "enum": ["minimum", "maximum", "floor", "ceil"]
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/NumericExpression"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RuleEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "targets"],
+      "properties": {
+        "type": {
+          "enum": ["forbid", "require", "lock", "limit"]
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuleTarget"
+          }
+        },
+        "limit": {
+          "$ref": "#/$defs/NumericExpression"
+        }
+      }
+    },
+    "Rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "priority", "domain", "condition", "effect"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "enum": [1, 2, 3, 4, 5]
+        },
+        "domain": {
+          "enum": [
+            "print_area",
+            "background",
+            "output",
+            "model",
+            "decor",
+            "garment_color",
+            "composition",
+            "cover",
+            "palette",
+            "product",
+            "validation",
+            "artwork",
+            "prompt",
+            "session",
+            "export",
+            "group"
+          ]
+        },
+        "condition": {
+          "$ref": "#/$defs/ConditionNode"
+        },
+        "effect": {
+          "$ref": "#/$defs/RuleEffect"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "RuleSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "schemaVersion", "name", "ruleIds"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "ruleIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "PromptModule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "schemaVersion", "moduleType", "template", "variables"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "moduleType": {
+          "enum": ["global", "product", "season", "scene", "output_a", "output_b", "cover", "group"]
+        },
+        "template": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "constraintsRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ExportManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exportId",
+        "schemaVersion",
+        "projectId",
+        "sessionIds",
+        "exportScope",
+        "scopeDetail",
+        "exportFormats",
+        "createdAt",
+        "applicationVersion",
+        "generatorVersion",
+        "ruleSetVersions",
+        "promptModuleVersions",
+        "includedFiles",
+        "fileSizes",
+        "checksums",
+        "warnings",
+        "sourceFingerprints"
+      ],
+      "properties": {
+        "exportId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exportScope": {
+          "enum": ["output", "group", "cover", "session", "all"]
+        },
+        "scopeDetail": {
+          "type": "string"
+        },
+        "exportFormats": {
+          "type": "array",
+          "items": {
+            "enum": ["txt", "json", "zip"]
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applicationVersion": {
+          "type": "string"
+        },
+        "generatorVersion": {
+          "type": "string"
+        },
+        "ruleSetVersions": {
+          "type": "object"
+        },
+        "promptModuleVersions": {
+          "type": "object"
+        },
+        "includedFiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "kind"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?!.*\\.\\.).+$"
+              },
+              "kind": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "fileSizes": {
+          "type": "object"
+        },
+        "checksums": {
+          "type": "object"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "messageAr", "messageEn"],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "messageAr": {
+                "type": "string"
+              },
+              "messageEn": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "sourceFingerprints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sessionFingerprint"],
+          "properties": {
+            "sessionFingerprint": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sceneFingerprints": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "coverHash": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "PhotoshootSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "projectId",
+        "name",
+        "createdAt",
+        "updatedAt",
+        "season",
+        "audience",
+        "productIds",
+        "colorSelection",
+        "requestedSceneCount",
+        "scenes",
+        "sceneOrder",
+        "groups",
+        "cover",
+        "status",
+        "validationResultId",
+        "validationResults",
+        "dedupLedger",
+        "generationProgress",
+        "fingerprint"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "season": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audience": {
+          "enum": ["kids", "adult", "unisex", "teen", "all"]
+        },
+        "productIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "colorSelection": {
+          "$ref": "#/$defs/ColorSelection"
+        },
+        "requestedSceneCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "scenes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Scene"
+          }
+        },
+        "sceneOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "groups": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Group"
+          }
+        },
+        "cover": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/MainCover"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "validating",
+            "blocked",
+            "generating",
+            "cover_build",
+            "ready",
+            "exported"
+          ]
+        },
+        "validationResultId": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validationResults": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ValidationResult"
+          }
+        },
+        "dedupLedger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["seen", "combinationSpaceSize"],
+          "properties": {
+            "seen": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "combinationSpaceSize": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "generationProgress": {
+          "$ref": "#/$defs/GenerationProgress"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/SessionFingerprint"
+        }
+      }
+    },
+    "Project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "schemaVersion",
+        "name",
+        "createdAt",
+        "updatedAt",
+        "sessions",
+        "sessionOrder",
+        "currentVersionId",
+        "versionHistory",
+        "versionOrder",
+        "isDigitalProduct",
+        "persistenceMode",
+        "retention",
+        "artworks"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/PhotoshootSession"
+          }
+        },
+        "sessionOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "currentVersionId": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "versionHistory": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/VersionSnapshot"
+          }
+        },
+        "versionOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "isDigitalProduct": {
+          "type": "boolean"
+        },
+        "persistenceMode": {
+          "const": "local_single_user"
+        },
+        "ownerRef": {
+          "type": "string"
+        },
+        "retention": {
+          "$ref": "#/$defs/RetentionPolicy"
+        },
+        "artworks": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Artwork"
+          }
+        }
+      }
+    }
+  }
+}

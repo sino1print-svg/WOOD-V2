@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "output.schema.json",
+  "oneOf": [
+    { "$ref": "https://mpd.local/schemas/domain.schema.json#/$defs/OutputA" },
+    { "$ref": "https://mpd.local/schemas/domain.schema.json#/$defs/OutputB" }
+  ]
+}

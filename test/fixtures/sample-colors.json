@@ -1,0 +1,9 @@
+{
+  "description": "Phase 0 deterministic sample data (Color shape, DM §3.11). Data only.",
+  "colors": [
+    { "id": "col_white", "name": "White", "hex": "#FFFFFF" },
+    { "id": "col_black", "name": "Black", "hex": "#000000" },
+    { "id": "col_sand", "name": "Sand", "hex": "#C2B280" },
+    { "id": "col_navy", "name": "Navy", "hex": "#1F2A44" }
+  ]
+}

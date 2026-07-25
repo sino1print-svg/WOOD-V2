@@ -1,0 +1,7 @@
+dist
+dist-verify
+node_modules
+coverage
+test/golden-masters
+docs/spec
+*.timestamp-*.mjs

@@ -1,0 +1,78 @@
+{
+  "package_name": "mockup-photoshoot-director-phase7-third-corrective-ready-for-independent-audit",
+  "created_at_utc": "2026-07-25T19:11:05Z",
+  "source_package": {
+    "filename": "third-corrective-final.zip",
+    "sha256": "f53b3c38ecb1a3d1b45e5ccf7f2b80bacc1f199213d777b9e8bb43fcee03aa5f",
+    "verified_on_receipt": true
+  },
+  "scope_note": {
+    "documentation_status": "Not covered by this package. Volumes 01-14 (Professional Reference Encyclopedia) are a separate documentation/specification deliverable with its own APPROVED status, unrelated to this source package's implementation status.",
+    "implementation_status": "Phase 7 Third Corrective only. The Cover Engine semantic-conflict grammar was corrected and extended in this package. No claim of Phase 14, or of a complete/final application, is made anywhere in this package or its reports."
+  },
+  "environment": {
+    "node_used": "v22.22.2",
+    "npm_used": "10.9.7",
+    "node_required": ">=20",
+    "node_pinned": "22.22.3",
+    "npm_pinned_package_manager": "npm@10.9.8"
+  },
+  "entry_point": "index.html -> src/main.tsx",
+  "start_command_dev": "npm run dev",
+  "start_command_preview": "npm run build && npm run preview",
+  "build_command": "npm run build",
+  "test_command": "npm run test",
+  "verify_command": "npm run verify",
+  "verify_full_command": "npm run verify:full",
+  "verification_status": {
+    "npm_ci": "pass",
+    "npm_audit_full": "fail (14 high, dev-only ESLint 8.x toolchain, requires breaking eslint@10 upgrade, out of scope)",
+    "npm_audit_prod": "pass (0 vulnerabilities)",
+    "typecheck": "pass",
+    "lint": "pass (0 warnings)",
+    "format_check": "pass",
+    "test": "pass (1812/1812, 0 failing, 0 skipped)",
+    "verify_determinism": "pass",
+    "build": "pass",
+    "verify": "pass",
+    "verify_full": "fail (audit:full gate only, see npm_audit_full)",
+    "runtime_dev_smoke_test": "pass (real headless-browser check, no page errors, no failed asset loads, only cosmetic /favicon.ico 404)",
+    "runtime_production_preview_smoke_test": "pass (same result as dev)"
+  },
+  "decision": "APPROVED — PHASE 7 CORRECTIVE SOURCE PACKAGE / APPLICATION REMAINS INCOMPLETE",
+  "windows_final_release": false,
+  "electron_or_installer_packaging_present": false,
+  "docs_spec_modified": false,
+  "docs_spec_tree_sha256": "47c4da02fc221e5fbb0bb80a21cb6042a273ecc63fc01adc60104a9f0b052637",
+  "test_counts": {
+    "test_files": 96,
+    "total_tests": 1812,
+    "passing": 1812,
+    "failing": 0,
+    "skipped": 0,
+    "baseline_before_session": 1777,
+    "net_new_tests": 35,
+    "new_tests_breakdown": {
+      "part_a_suggestion_change_lemma_family": 15,
+      "part_b_material_compound_exception": 12,
+      "part_c_safe_composite_header": 8
+    }
+  },
+  "files_modified_vs_source_package": [
+    "package-lock.json",
+    "src/engines/cover-engine/semantic-conflict.ts",
+    "src/engines/cover-engine/validation.ts",
+    "src/engines/cover-engine/prompt-module.ts",
+    "test/cover-engine/phase7-third-corrective-semantic-grammar.test.ts"
+  ],
+  "excluded_from_package": [
+    "node_modules",
+    "dist",
+    ".git",
+    "validation-artifacts (working-copy logs, not part of the audit source)",
+    "test/_tmp-debug*.test.ts (deleted, confirmed absent)",
+    "test/cover-engine/_probe*.test.ts (deleted, confirmed absent)"
+  ],
+  "package_file_count": 297,
+  "package_sha256_note": "The ZIP archive's own SHA-256 is computed after archiving (this manifest is itself inside the archive) and is reported in the delivery message and in a sibling .sha256 file next to the .zip, not embedded here."
+}

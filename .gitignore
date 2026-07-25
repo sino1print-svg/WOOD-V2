@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-verify
+coverage
+*.local
+.DS_Store
+.vite
+*.timestamp-*.mjs
+.determinism
