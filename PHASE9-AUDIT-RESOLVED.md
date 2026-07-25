@@ -21,19 +21,19 @@ the resolution.
 
 ## Gate results after merge (clean `npm ci`, re-run on `claude/scene-engine-phase9-audit-cmd80c`)
 
-| Gate | Command | Result |
-|---|---|---|
-| Clean install | `npm ci` | PASS — 0 vulnerabilities |
-| `npm audit` (all) | — | **PASS — 0 vulnerabilities** |
-| `npm audit --omit=dev` | — | PASS — 0 vulnerabilities |
-| Typecheck | `npm run typecheck` | PASS |
-| Lint | `npm run lint` | PASS |
-| Format | `npm run format:check` | PASS |
-| Test | `npm run test` | PASS — 1869/1869 (100 files) |
-| Determinism | `npm run verify:determinism` | PASS (identical SHA-256s to pre-upgrade build) |
-| Build | `npm run build` | PASS |
-| `npm run verify` | — | PASS |
-| `npm run verify:full` | — | **PASS — exit 0** |
+| Gate                   | Command                      | Result                                         |
+| ---------------------- | ---------------------------- | ---------------------------------------------- |
+| Clean install          | `npm ci`                     | PASS — 0 vulnerabilities                       |
+| `npm audit` (all)      | —                            | **PASS — 0 vulnerabilities**                   |
+| `npm audit --omit=dev` | —                            | PASS — 0 vulnerabilities                       |
+| Typecheck              | `npm run typecheck`          | PASS                                           |
+| Lint                   | `npm run lint`               | PASS                                           |
+| Format                 | `npm run format:check`       | PASS                                           |
+| Test                   | `npm run test`               | PASS — 1869/1869 (100 files)                   |
+| Determinism            | `npm run verify:determinism` | PASS (identical SHA-256s to pre-upgrade build) |
+| Build                  | `npm run build`              | PASS                                           |
+| `npm run verify`       | —                            | PASS                                           |
+| `npm run verify:full`  | —                            | **PASS — exit 0**                              |
 
 ## Status
 
