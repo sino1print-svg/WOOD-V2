@@ -558,7 +558,6 @@ function resolveBuckets(evaluated: readonly EvaluatedRule[]): {
       );
     }
     if (!blocked && limit !== null && requiredValues.length > limit) {
-      blocked = true;
       failures.push(
         failureFromCode('RE_INTERNAL_CONFLICT', bucketKey, primary.evaluated.rule.id, {
           priority: winningPriority,
