@@ -1,28 +1,46 @@
 {
-  "package": "mockup-photoshoot-director-phase9-scene-engine-working-tree",
+  "package": "mockup-photoshoot-director-phase9-scene-engine-merged-final",
   "phase": "Phase 9 — Scene Engine (Volume 08)",
-  "status": "PHASE 9 — IMPLEMENTATION VERIFIED — FINAL AUDIT BLOCKED BY DEV-ONLY ESLINT DEPENDENCY CHAIN",
-  "created_at_utc": "2026-07-25T23:12:31Z",
+  "status": "PHASE 9 — AUDIT BLOCKER RESOLVED — MERGED — FINAL PACKAGE",
+  "created_at_utc": "2026-07-25T23:42:19Z",
   "contents": "Complete runnable working tree (git-ready). node_modules/dist/.git excluded; run npm ci to install.",
   "scene_engine_source_files": 17,
   "scene_engine_test_files": 5,
+  "eslint_upgrade": {
+    "pull_request": "https://github.com/sino1print-svg/WOOD-V2/pull/1",
+    "merge_commit": "f1899bc75deb22e9cdbf90baf0070ced414adb45",
+    "eslint": "8.57.1 -> 10.8.0",
+    "typescript_eslint": "7.18.0 -> 8.65.0",
+    "eslint_plugin_react_hooks": "4.6.2 -> 7.1.1",
+    "config_format": ".eslintrc.cjs -> eslint.config.js (flat config)",
+    "rule_set_change": "none intended — prior rule set reproduced exactly under flat config",
+    "incidental_fixes": [
+      "src/engines/rule-engine/engine.ts: removed a dead store flagged by eslint:recommended's no-useless-assignment (no behavior change, full suite still 1869/1869)",
+      "test/domain-model/assignability.test.ts: removed a stale eslint-disable-next-line directive"
+    ]
+  },
   "gate_results_live": {
-    "npm_ci": "pass",
+    "npm_ci": "pass (0 vulnerabilities)",
+    "npm_audit_full": "pass (0 vulnerabilities)",
+    "npm_audit_prod": "pass (0 vulnerabilities)",
     "typecheck": "pass",
     "lint": "pass",
     "format_check": "pass",
     "test": "pass (1869/1869, 100 files)",
-    "verify_determinism": "pass",
+    "verify_determinism": "pass (build hashes byte-identical to pre-upgrade build)",
     "build": "pass",
     "verify": "pass",
-    "verify_full": "fail (audit:full step only — dev-only ESLint chain)",
-    "audit_prod": "pass (0 vulnerabilities)"
+    "verify_full": "pass — exit 0 (previously blocked at audit:full)"
   },
   "docs_spec_modified": false,
   "used_force": false,
-  "eslint_breaking_upgrade": false,
+  "eslint_breaking_upgrade_scope": "isolated to devDependencies + lint config; no application source behavior changed",
   "tests_deleted": false,
   "phase_10_started": false,
-  "reports_included": ["PHASE9-FINAL-AUDIT-BLOCKER-REPORT.md", "PHASE9-COMMAND-RESULTS.md"],
-  "total_files": 320
+  "reports_included": [
+    "PHASE9-FINAL-AUDIT-BLOCKER-REPORT.md",
+    "PHASE9-COMMAND-RESULTS.md",
+    "PHASE9-AUDIT-RESOLVED.md"
+  ],
+  "total_files": 322
 }
