@@ -23,7 +23,6 @@ import type {
 import type { ExportDeliveryFormat } from '../../src/shared/contracts';
 import type { ProjectStore } from '../../src/persistence';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function __assignabilityChecks(ctx: EvaluationContext, opFmt: ExportDeliveryFormat): void {
   const outAId = 'sale-image-001' as unknown as OutputAId;
   const outBId = 'preview-image-001' as unknown as OutputBId;
