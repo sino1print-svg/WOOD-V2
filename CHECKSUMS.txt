@@ -1,6 +1,6 @@
-# Current per-file SHA-256 checksum listing for the Batch 10.4 Fourth
+# Current per-file SHA-256 checksum listing for the Batch 10.4 Fifth
 # Corrective working tree (see CHECKPOINT-MANIFEST.json). Excludes
-# node_modules/dist/.git and this file itself. 403 regular files.
+# node_modules/dist/.git and this file itself. 402 regular files.
 ac86fac6bb8473ed69476c92b84a3d72128b2a1c1627b2088f7958a4020f43a9  .github/workflows/ci.yml
 16be14ee296b0ed282d1aa97804fa589c8504b9447e08dea0e551ea339bc3850  .gitignore
 9c579c4eab1d526e689fe7cda201a0ab2f39070304043bb55c459a3d90954250  .node-version
@@ -174,12 +174,12 @@ f72d6e06eb4ccf8f5cc5e184303e58f98ee42a9f7bc8553d0d628133ded146ea  src/export/pac
 3b2fc122ea0cc87bbe570cc00f6bd8c215a147d3fcd983744587165b31ed22c7  src/export/packaging/manifest.ts
 2dd20af3626cdd18efa66ef20ca886b601dff23a49a32f83a7cd5ad6bfbb83d5  src/export/packaging/naming.ts
 e0700bdd2233a016a9261db3577ff870a42cbc5cd7dfa9196ae8224382da9be2  src/export/packaging/package-entry.ts
-2900da28f2d48518cc8c4422e012082d8240d0661809e5454a905e40bec0f0d7  src/export/packaging/package-plan.ts
+caff58bfaa09e53c6695e3c0630f583c1e3e9d991e1174ec6c2dbfcd95529305  src/export/packaging/package-plan.ts
 e070ec347cb4c28e99d4d945c1ea3b61a969e20734ff768347f08db10c77deb0  src/export/packaging/package-result.ts
-775e7c117485e09f3e882ddaea5d2a3288dbd068664a4d70252aa3ce6f9f0948  src/export/packaging/package.ts
+7751b65e637cd2f5c1ab222528361620d7b19185e225b798ecebf86ea590bb2b  src/export/packaging/package.ts
 f799cfd53eadb5a436e078954cbccbd0df6736d98c27ca3d99333116b1c1c5e4  src/export/packaging/path.ts
 717e274c133d429eced982d6a186058ef43d2e3a91c911a3508db9797cda8d7b  src/export/packaging/slug.ts
-f2ef42a02c48b747abf2c6aed2c6c3014892de78f90246bde10d42eef0bda75e  src/export/packaging/zip-verifier.ts
+feb2ddb86bc71249f195c253fbe362400b4f4e85f567d19e7ee3b2047c8dafce  src/export/packaging/zip-verifier.ts
 868046382b2e8b0d6776ef923371b030cfa868561203e706f4d050408b1f0e67  src/export/packaging/zip-writer.ts
 a09bcf1dcddd2eed6749f96aca712dae7e3b6fc41b63346e2403483c3212b944  src/export/plan-validation.ts
 76b7060a16737bf9c4ffb20270c22601386be6493b7e6b184c50e565bf093fb0  src/export/projection.ts
@@ -290,7 +290,7 @@ b03d7bc3ee5802304bd85d0d5bc1d59072c225d7df5f5ff648af995b9202750a  test/export-en
 763d8ff379ea7b1bef180bec6742573d470c0b71696598db9b37fc802684372f  test/export-engine/ordering-numbering.test.ts
 35f455f33b4ed61f48f17ab71d1e7dc2110dc78be94abc9e6facbed54cd8be3f  test/export-engine/packaging/architecture.test.ts
 8274b55b687ba341243972eb078b9e80d9fc098493c1b93451f0e0c0d21e90bc  test/export-engine/packaging/checksum.test.ts
-1db5ab451d50d9f0f8ae3270821be473af33b5cad6e91e602a197f57a7bb78ce  test/export-engine/packaging/corrective-adversarial.test.ts
+f3f3ec5c664f0e26b7c29bf8e8ed3d4362b9a66486499746d8f338bb11dc5693  test/export-engine/packaging/corrective-adversarial.test.ts
 d6301e71d66c1292461a4a8e645364a5a7db2d75122a4c97857dc14b72fd71bd  test/export-engine/packaging/fixtures.ts
 4c61f80a56c3d6d7fd803b7b392e74bc32368c693340943961f814d63d700268  test/export-engine/packaging/golden-digests.ts
 5cfbd7d5f8417b2bf362d129a73fdf05aefd1e900d6c8f55a99fcb79a6b38caf  test/export-engine/packaging/golden-fixtures.ts
@@ -403,4 +403,4 @@ f484e9c800e1b1f802607d5505547f76928eda1dafe1cc9a9976df6d6717dd63  test/ui-engine
 1d0e502a269298bbea652d16f6a910b8a59f4cdc66d038a69aeaeb6f739dedd4  tsconfig.json
 2697c6875cf46f0c029e6864d726d2d5641d5dbc3e933693cdf815041e28e4ef  vite.config.ts
 d6b5f295b2cb683f30712f0e68fcbc186dc1cd8e02445c3ea55e70d9474fffe0  vitest.config.ts
-1b106c6025000e1ba83d5513f471188b4c4bf8ee56687873f056aade0dfd065a  CHECKPOINT-MANIFEST.json
+72de795772cdf3f0049e8823ca38d80897e0c550a290e1b3167c19a2d794fe01  CHECKPOINT-MANIFEST.json
