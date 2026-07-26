@@ -13,9 +13,14 @@ import {
   type ExpectedZipEntry,
 } from '../../../src/export/packaging/zip-verifier';
 import { makeEntry, type PackageEntry } from '../../../src/export/packaging/package-entry';
-import { ExportFormat, ExportScope, ValidationSeverity } from '../../../src/shared/domain-model';
+import {
+  ExportFormat,
+  ExportScope,
+  ValidationSeverity,
+  type OutputAId,
+} from '../../../src/shared/domain-model';
 import { APP_CONFIG } from '../../../src/config/app-config';
-import { CANONICAL_EXPORT_INPUT, CANONICAL_SESSION_ID } from '../fixtures';
+import { CANONICAL_EXPORT_INPUT, CANONICAL_SCOPES, CANONICAL_SESSION_ID } from '../fixtures';
 import { createPackageFixture } from './fixtures';
 import {
   crc32Of,
@@ -29,6 +34,12 @@ import {
 } from './zip-byte-helpers';
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+
+/** Wraps a raw `ExportPlanResult` into a full `ExportPackageInput` for direct `packageExport` calls. */
+function packageInputFor(planResult: ExportPackageInput['planResult']): ExportPackageInput {
+  const { versions, limits, createdAt, exportId } = createPackageFixture();
+  return { planResult, versions, limits, createdAt, exportId };
+}
 
 interface EntryMutationResult {
   readonly zipBytes: Uint8Array;
@@ -222,6 +233,78 @@ describe('First Corrective F1 - reject backup and Prompt Pack scopes', () => {
     const result = packageForScope(planResult);
     expect(result.ok).toBe(false);
     expect('zipBytes' in result).toBe(false);
+  });
+});
+
+describe('Second Corrective C1 - pair-file emission requires a genuine, cross-verified A/B link', () => {
+  function pairPlanResult() {
+    const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: CANONICAL_SCOPES[2]! });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    return planResult;
+  }
+
+  it('canonical complete pair emits Output A, Output B, and exactly one pair file', () => {
+    const result = packageExport(packageInputFor(pairPlanResult()));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const kinds = result.entries.map((entry) => entry.kind);
+    expect(kinds.filter((kind) => kind === 'prompt_a')).toHaveLength(1);
+    expect(kinds.filter((kind) => kind === 'prompt_b')).toHaveLength(1);
+    expect(kinds.filter((kind) => kind === 'prompt_pair')).toHaveLength(1);
+  });
+
+  it('hostile plan with Output B linked to a different Output A: no pair file emitted (fails closed)', () => {
+    const planResult = pairPlanResult();
+    const clonedPlan = structuredClone(planResult.value);
+    expect(clonedPlan.selection.outputsB).toHaveLength(1);
+    const mutatedPlan = {
+      ...clonedPlan,
+      selection: {
+        ...clonedPlan.selection,
+        outputsB: clonedPlan.selection.outputsB.map((outputB) => ({
+          ...outputB,
+          // A syntactically valid but unrelated Output A id - the resolved
+          // plan no longer actually links this B back to the selected A,
+          // even though both individually still look well-formed.
+          sourceOutputAId: 'output-a-unrelated-hostile-id' as OutputAId,
+        })),
+      },
+    };
+    const result = packageExport(packageInputFor({ ok: true, value: mutatedPlan }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // prompt_a/prompt_b are still independently selected/emitted (content
+    // policy, not linkage, governs their inclusion); only the pair file -
+    // which asserts a real A/B relationship - must be suppressed.
+    const kinds = result.entries.map((entry) => entry.kind);
+    expect(kinds).toContain('prompt_a');
+    expect(kinds).toContain('prompt_b');
+    expect(kinds).not.toContain('prompt_pair');
+  });
+
+  it('hostile plan whose numbering disagrees with an otherwise-consistent A/B selection: no pair file emitted', () => {
+    const planResult = pairPlanResult();
+    const clonedPlan = structuredClone(planResult.value);
+    expect(clonedPlan.numbering.length).toBeGreaterThan(0);
+    // selection.outputsA/outputsB remain mutually consistent with each other,
+    // but plan.numbering - the independent second signal - is mutated to
+    // reference a different Output B id, so it no longer corroborates.
+    const mutatedPlan = {
+      ...clonedPlan,
+      numbering: clonedPlan.numbering.map((entry) =>
+        entry.outputBId !== undefined
+          ? { ...entry, outputBId: 'output-b-unrelated-hostile-id' as (typeof entry)['outputBId'] }
+          : entry,
+      ),
+    };
+    const result = packageExport(packageInputFor({ ok: true, value: mutatedPlan }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const kinds = result.entries.map((entry) => entry.kind);
+    expect(kinds).toContain('prompt_a');
+    expect(kinds).toContain('prompt_b');
+    expect(kinds).not.toContain('prompt_pair');
   });
 });
 

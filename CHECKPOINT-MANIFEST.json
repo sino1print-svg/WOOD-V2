@@ -40,7 +40,7 @@
   "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over the full working tree, excluding node_modules/dist/.git and CHECKSUMS.txt itself, 403 files)",
   "source_tree_combined_hash": {
     "command": "npm run hash:source-tree",
-    "value": "0751585218a59f4375225ef97ab6d6d37313704f8eac3040d68d82209d43fd67  402 files",
+    "value": "0c00daa9e3a7fa363959ba115b9d806fb7de2fc492edcea343ae633ae00f4538  402 files",
     "note": "Second Corrective C8 fix: scripts/source-tree-hash.mjs now explicitly excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt by exact relative path (documented in the script itself), because a combined hash that embeds itself in one of the files it hashes can never reproduce - the act of writing the value changes the bytes that produced it. 402 = 404 total regular files minus these 2 excluded bookkeeping files. This value is reproducible on any clean extraction: editing CHECKPOINT-MANIFEST.json or CHECKSUMS.txt afterward does not change it, since both are now outside the hashed set. Verify with: sha256sum -c CHECKSUMS.txt && node scripts/source-tree-hash.mjs."
   },
   "docs_spec_modified": false,
