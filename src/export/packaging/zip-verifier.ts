@@ -267,20 +267,57 @@ export function parseZip(bytes: Uint8Array): ZipParseResult {
       return { ok: false, reason: 'trailing_central_directory_bytes' };
     }
 
-    // Third/Fourth Corrective F3/C4: the local-entries region (byte 0 through
-    // centralDirectoryOffset) must be covered *exactly* by the entries' own
-    // local byte ranges, laid out contiguously with no gaps, no overlaps, and
-    // no bytes before the first header or after the last entry's data -
-    // closing the "hidden bytes between entries or before the central
-    // directory" gap that the per-entry-only checks above cannot see on
-    // their own. Critically, `localRanges` is checked in the exact order it
-    // was populated above - i.e. central-directory iteration order - and is
-    // never independently sorted by offset: a canonical archive's physical
-    // local-entry byte layout must match that same central-directory order,
-    // not merely be *some* gap-free permutation of it. Sorting first would
-    // "prove" only gap-free coverage while silently discarding the
-    // physical-order-vs-declared-order relationship, letting a byte-reordered
-    // (non-canonical) but structurally-complete archive pass.
+    // Third/Fourth/Fifth Corrective F3/C4: the local-entries region (byte 0
+    // through centralDirectoryOffset) must be covered *exactly* by the
+    // entries' own local byte ranges, laid out contiguously with no gaps, no
+    // overlaps, and no bytes before the first header or after the last
+    // entry's data - closing the "hidden bytes between entries or before the
+    // central directory" gap that the per-entry-only checks above cannot see
+    // on their own. Critically, `localRanges` is checked in the exact order
+    // it was populated above - i.e. central-directory iteration order - and
+    // is never independently sorted by offset: a canonical archive's
+    // physical local-entry byte layout must match that same
+    // central-directory order, not merely be *some* gap-free permutation of
+    // it. Sorting first would "prove" only gap-free coverage while silently
+    // discarding the physical-order-vs-declared-order relationship, letting
+    // a byte-reordered (non-canonical) but structurally-complete archive
+    // pass.
+    //
+    // Fifth Corrective C4: order is diagnosed as its own, separate pass
+    // *before* coverage (prefix/overlap/gap) is ever checked. A single
+    // combined pass could reach a forward gap (moving one entry later
+    // creates a gap relative to its now-distant predecessor) or a non-zero
+    // first offset (displacing the canonical-first entry) before it ever
+    // saw the backward jump that actually proves physical order disagrees
+    // with declared central order - misreporting a real reordering attack
+    // (an interior swap, or a full reversal) as a mere gap or prefix issue.
+    //
+    // Pass 1 - reused offsets: a repeated `localHeaderOffset` anywhere in
+    // the archive (not just between adjacent central-order entries) is
+    // rejected outright, with priority over every other reason below.
+    const seenOffsets = new Set<number>();
+    for (const range of localRanges) {
+      if (seenOffsets.has(range.localHeaderOffset)) {
+        return { ok: false, reason: 'local_offset_reused' };
+      }
+      seenOffsets.add(range.localHeaderOffset);
+    }
+
+    // Pass 2 - central-order monotonicity: with no reused offset possible at
+    // this point, any adjacent central-order pair whose physical offset goes
+    // backward proves the physical layout disagrees with canonical central
+    // order, independent of whether coverage still happens to be gap-free
+    // overall.
+    for (let index = 1; index < localRanges.length; index += 1) {
+      if (localRanges[index]!.localHeaderOffset < localRanges[index - 1]!.localHeaderOffset) {
+        return { ok: false, reason: 'local_order_mismatch' };
+      }
+    }
+
+    // Pass 3 - canonical local-region coverage: order is now proven
+    // monotonic, so any remaining anomaly is a genuine coverage problem -
+    // a non-zero first offset, a forward overlap, a forward gap, or bytes
+    // left over before the central directory.
     const first = localRanges[0];
     if (first !== undefined && first.localHeaderOffset !== 0) {
       return { ok: false, reason: 'unexpected_archive_prefix' };
@@ -288,12 +325,6 @@ export function parseZip(bytes: Uint8Array): ZipParseResult {
     for (let index = 1; index < localRanges.length; index += 1) {
       const previous = localRanges[index - 1]!;
       const current = localRanges[index]!;
-      if (current.localHeaderOffset === previous.localHeaderOffset) {
-        return { ok: false, reason: 'local_offset_reused' };
-      }
-      if (current.localHeaderOffset < previous.localHeaderOffset) {
-        return { ok: false, reason: 'local_order_mismatch' };
-      }
       if (current.localHeaderOffset < previous.dataEnd) {
         return { ok: false, reason: 'local_entry_overlap' };
       }

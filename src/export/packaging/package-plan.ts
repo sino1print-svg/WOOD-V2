@@ -108,6 +108,74 @@ function groupByIdentity<T extends { readonly sessionId: string; readonly sceneI
 }
 
 /**
+ * Fifth Corrective C1: a resolved scope's `policy` flags are the allowlist
+ * for which artifact *categories* may be selected at all - `output_b` and
+ * `group_b` must never carry a selected Output A, `cover` must never carry
+ * selected Output A/B prompts, `execution_plan` must never carry prompt
+ * artifacts, and so on. `hasRelationalIntegrityViolation` below proves
+ * selected artifacts are *mutually consistent*, but a single internally
+ * consistent Output A (e.g. the scene's own genuine Output A record,
+ * injected into `selection.outputsA` even though `policy.outputA` is
+ * `false`) satisfies every relational check and previously slipped through.
+ * The real planner (`selection.ts`) always respects these flags - a
+ * genuine `createExportPlan(...)` result can never trip this check - so
+ * this exists purely to fail closed on a shape-valid but policy-violating
+ * (hostile) plan. `products`/`seasons`/`colors` are intentionally excluded:
+ * they are supporting descriptors selected under a separate, already
+ * allowlisted rule, not a `policy`-gated category.
+ */
+export function hasScopePolicyViolation(plan: ExportPlan): boolean {
+  const policy = plan.scope.policy;
+  const selection = plan.selection;
+  if (!policy.projectMetadata && selection.project !== null) return true;
+  if (!policy.sessionMetadata && selection.sessions.length > 0) return true;
+  if (!policy.sceneMetadata && selection.scenes.length > 0) return true;
+  if (!policy.outputA && selection.outputsA.length > 0) return true;
+  if (!policy.outputB && selection.outputsB.length > 0) return true;
+  if (!policy.groupMetadata && selection.groups.length > 0) return true;
+  if (!policy.groupPlans && selection.groupPlans.length > 0) return true;
+  if (!policy.executionPlans && selection.executionPlans.length > 0) return true;
+  if (!policy.cover && selection.covers.length > 0) return true;
+  if (!policy.artworkMetadata && selection.artworks.length > 0) return true;
+  if (!policy.validationResults && selection.validationResults.length > 0) return true;
+  if (!policy.versionMetadata && selection.versions.length > 0) return true;
+  return false;
+}
+
+/**
+ * Fifth Corrective C3: the resolved scope's own identity-allowlist arrays
+ * must themselves be duplicate-free. `hasRelationalIntegrityViolation`
+ * checks scope *membership* via `Set`, which silently discards duplicate
+ * evidence; content construction (`buildPackageContentEntries`) iterates
+ * `plan.scope.sessionIds` directly, so a duplicated session id there
+ * re-emits the same real session's content twice under two different
+ * ordinal folders. A genuine `resolveExportScope(...)` result never
+ * contains a duplicate in any of these arrays.
+ *
+ * `sceneIds` is deliberately excluded: a `SceneId` is only guaranteed
+ * unique *within* its own session (EX §12 Third Corrective F2), so a
+ * `complete_project`/`all`-scope plan spanning two sessions that happen to
+ * each name a scene the same thing legitimately produces the identical
+ * string twice in this flat, session-less array - that is the exact,
+ * audited-as-valid "reused sceneId across sessions" case (see the Fourth/
+ * Fifth Corrective cross-session tests), not a corrupt scope. Content
+ * construction is keyed by the complete `(sessionId, sceneId)` identity
+ * throughout, never by `sceneId` alone, so a repeated scene-id string here
+ * cannot cause the double-emission this check exists to prevent.
+ */
+export function hasDuplicateScopeIdentifiers(plan: ExportPlan): boolean {
+  const hasDuplicates = (ids: readonly string[]): boolean => new Set(ids).size !== ids.length;
+  return (
+    hasDuplicates(plan.scope.sessionIds) ||
+    hasDuplicates(plan.scope.groupIds) ||
+    hasDuplicates(plan.scope.outputAIds) ||
+    hasDuplicates(plan.scope.outputBIds) ||
+    hasDuplicates(plan.scope.coverIds) ||
+    hasDuplicates(plan.scope.versionIds)
+  );
+}
+
+/**
  * Fourth Corrective C1/C2: exact-cardinality, scope-aware relational
  * validation over `plan.selection.outputsA`/`outputsB`/`plan.numbering`,
  * replacing the prior first-match `.find()`-based checks (Third Corrective
@@ -142,6 +210,27 @@ export function hasRelationalIntegrityViolation(plan: ExportPlan): boolean {
   const sessionIdSet = new Set<string>(plan.scope.sessionIds);
   const sceneIdSet = new Set<string>(plan.scope.sceneIds);
   const sceneScopeIsBounded = plan.scope.sceneIds.length > 0;
+  // Fifth Corrective C2: the resolved scope's own flat ID allowlists -
+  // computed once by `resolveExportScope` directly from the source project,
+  // never touched by `selection`/`numbering` construction - anchor every
+  // selected/referenced output id to a real, in-scope entity. Without this,
+  // a hostile plan can jointly forge `sourceOutputAId`, a selected id, and
+  // its numbering counterpart to the *same* fabricated value and pass every
+  // mutual-consistency check above, since none of those fields is ever
+  // compared against ground truth outside the mutable plan sections.
+  const outputAIdSet = new Set<string>(plan.scope.outputAIds);
+  const outputBIdSet = new Set<string>(plan.scope.outputBIds);
+  // A real resolved id must be claimed by at most one (sessionId, sceneId)
+  // identity - closes a residual gap where two jointly-forged-but-otherwise-
+  // internally-consistent identities could both reference one real id.
+  const claimedOutputAId = new Map<string, string>();
+  const claimedOutputBId = new Map<string, string>();
+  const claim = (map: Map<string, string>, id: string, key: string): boolean => {
+    const existing = map.get(id);
+    if (existing !== undefined && existing !== key) return true;
+    map.set(id, key);
+    return false;
+  };
 
   const outOfScope = (sessionId: string, sceneId: string): boolean =>
     !sessionIdSet.has(sessionId) || (sceneScopeIsBounded && !sceneIdSet.has(sceneId));
@@ -169,6 +258,10 @@ export function hasRelationalIntegrityViolation(plan: ExportPlan): boolean {
 
   for (const [key, bList] of outputsBByIdentity) {
     const outputB = bList[0]!;
+    if (!outputBIdSet.has(outputB.id)) return true;
+    if (!outputAIdSet.has(outputB.sourceOutputAId)) return true;
+    if (claim(claimedOutputBId, outputB.id, key)) return true;
+    if (claim(claimedOutputAId, outputB.sourceOutputAId, key)) return true;
     const numberingList = numberingByIdentity.get(key) ?? [];
     if (numberingList.length !== 1) return true;
     const numberingEntry = numberingList[0]!;
@@ -192,6 +285,8 @@ export function hasRelationalIntegrityViolation(plan: ExportPlan): boolean {
 
   for (const [key, aList] of outputsAByIdentity) {
     const outputA = aList[0]!;
+    if (!outputAIdSet.has(outputA.id)) return true;
+    if (claim(claimedOutputAId, outputA.id, key)) return true;
     const numberingList = numberingByIdentity.get(key) ?? [];
     if (numberingList.length !== 1) return true;
     if (numberingList[0]!.outputAId !== outputA.id) return true;

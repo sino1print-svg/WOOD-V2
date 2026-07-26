@@ -28,7 +28,12 @@ import { sha256Bytes } from './checksum';
 import { isValidCreatedAt, isValidExportEngineVersions, isValidExportId } from './input-validation';
 import { buildExportManifest, serializeManifest } from './manifest';
 import type { PackageEntry } from './package-entry';
-import { buildPackageContentEntries, hasRelationalIntegrityViolation } from './package-plan';
+import {
+  buildPackageContentEntries,
+  hasDuplicateScopeIdentifiers,
+  hasRelationalIntegrityViolation,
+  hasScopePolicyViolation,
+} from './package-plan';
 import type {
   ExportPackageInput,
   ExportPackageResult,
@@ -161,14 +166,46 @@ function packageExportInternal(
       );
     }
 
-    // Fourth Corrective C1/C2: a shape-valid but relationally-corrupt plan
-    // (an Output B whose declared sourceOutputAId, or the numbering row for
-    // its identity, does not actually match the selected Output A for that
-    // same session+scene; a duplicate selected A/B/numbering row for one
-    // identity; or a selected output outside the resolved scope) must fail
-    // the whole packaging operation before any content is built - never
-    // package an Output B prompt under a false A/B relationship just because
-    // the pair-execution file alone would otherwise be suppressed.
+    // Fifth Corrective C1: the resolved scope's `policy` flags are the
+    // allowlist for which artifact *categories* may be selected at all - a
+    // shape-valid plan that selects an artifact category its own resolved
+    // policy disallows (e.g. an Output A injected into an `output_b`/
+    // `group_b`/`cover` package) must fail closed before any content is
+    // built, even when that artifact is otherwise internally consistent
+    // with the rest of the plan.
+    if (hasScopePolicyViolation(plan)) {
+      return failureResult(
+        [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope.policy')!],
+        warnings,
+        plan.omissions,
+      );
+    }
+
+    // Fifth Corrective C3: the resolved scope's own identity-allowlist
+    // arrays (sessionIds/sceneIds/groupIds/outputAIds/outputBIds/coverIds/
+    // versionIds) must themselves be duplicate-free - a duplicated id would
+    // otherwise re-emit the same real entity's content twice under two
+    // different ordinal folders during content construction.
+    if (hasDuplicateScopeIdentifiers(plan)) {
+      return failureResult(
+        [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope')!],
+        warnings,
+        plan.omissions,
+      );
+    }
+
+    // Fourth Corrective C1/C2 (extended by Fifth Corrective C2): a
+    // shape-valid but relationally-corrupt plan (an Output B whose declared
+    // sourceOutputAId, or the numbering row for its identity, does not
+    // actually match the selected Output A for that same session+scene; a
+    // duplicate selected A/B/numbering row for one identity; a selected
+    // output outside the resolved scope; or a selected/referenced output id
+    // that is not a real, in-scope id from `plan.scope.outputAIds`/
+    // `outputBIds` - including two jointly-forged fields that only agree
+    // with *each other*, never with the resolved scope's own ground truth)
+    // must fail the whole packaging operation before any content is built -
+    // never package an Output B prompt under a false A/B relationship just
+    // because the pair-execution file alone would otherwise be suppressed.
     if (hasRelationalIntegrityViolation(plan)) {
       return failureResult(
         [registeredExportFailure('EXPORT_LINK_001', 'packaging.selection.outputsB')!],

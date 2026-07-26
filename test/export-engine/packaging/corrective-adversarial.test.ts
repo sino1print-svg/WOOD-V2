@@ -14,8 +14,13 @@ import {
 } from '../../../src/export/packaging/zip-verifier';
 import { makeEntry, type PackageEntry } from '../../../src/export/packaging/package-entry';
 import {
+  hasDuplicateScopeIdentifiers,
+  hasScopePolicyViolation,
+} from '../../../src/export/packaging/package-plan';
+import {
   ExportFormat,
   ExportScope,
+  GroupBy,
   ValidationSeverity,
   type CoverId,
   type GroupId,
@@ -29,9 +34,11 @@ import { APP_CONFIG } from '../../../src/config/app-config';
 import {
   CANONICAL_EXPORT_INPUT,
   CANONICAL_PROJECT,
+  CANONICAL_SCENE,
   CANONICAL_SCENE_ID,
   CANONICAL_SCOPES,
   CANONICAL_SESSION_ID,
+  createCanonicalMultiSceneExportInput,
 } from '../fixtures';
 import { createPackageFixture, packageInputFromFormatter } from './fixtures';
 import {
@@ -1769,7 +1776,7 @@ describe('Fourth Corrective C4 - canonical local/central physical order enforcem
     expect(verifyPackageZip(result.zipBytes, ledgerFor(result)).ok).toBe(true);
   });
 
-  it('rejects two interior local entries physically swapped, even though every entry stays individually well-formed and full byte coverage holds', () => {
+  it('rejects two interior local entries physically swapped with the exact reason local_order_mismatch, even though every entry stays individually well-formed and full byte coverage holds', () => {
     const result = packageExport(createPackageFixture());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -1779,14 +1786,19 @@ describe('Fourth Corrective C4 - canonical local/central physical order enforcem
     // 2 in central/path order) - the very first entry stays at offset 0 (so
     // the archive-prefix check alone can't explain the rejection) and total
     // byte coverage is unchanged (so the gap/hidden-bytes checks alone can't
-    // explain it either).
+    // explain it either). Fifth Corrective C4: order is diagnosed as its own
+    // pass before coverage, so this must reach exactly local_order_mismatch,
+    // not local_entry_gap.
     const newOrder = [0, 2, 1, ...Array.from({ length: entryCount - 3 }, (_, i) => i + 3)];
     const swapped = reorderLocalBlocks(result.zipBytes, newOrder);
     const verification = verifyPackageZip(swapped, ledgerFor(result));
     expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('local_order_mismatch');
   });
 
-  it('rejects every local entry physically reversed, even though central-directory record order and total byte coverage are both untouched', () => {
+  it('rejects every local entry physically reversed with the exact reason local_order_mismatch, even though central-directory record order and total byte coverage are both untouched', () => {
     const result = packageExport(createPackageFixture());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -1796,6 +1808,14 @@ describe('Fourth Corrective C4 - canonical local/central physical order enforcem
     const reversed = reorderLocalBlocks(result.zipBytes, reversedOrder);
     const verification = verifyPackageZip(reversed, ledgerFor(result));
     expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    // Fifth Corrective C4: a full reversal must be diagnosed as
+    // local_order_mismatch (physical order disagrees with central order),
+    // not unexpected_archive_prefix (which only describes the first entry's
+    // own offset, and would misreport a genuine reordering attack as a
+    // narrower, less accurate structural complaint).
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('local_order_mismatch');
   });
 
   it('a real unzip-compatible tool may tolerate a physically-reordered archive, but the internal verifier must still reject it', () => {
@@ -1928,5 +1948,790 @@ describe('Fourth Corrective C4 - canonical local/central physical order enforcem
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
     expect(parsed.reason).toBe('local_order_mismatch');
+  });
+});
+
+describe('Fifth Corrective C1 - scope-policy allowlisting (selected artifact categories vs. resolved policy)', () => {
+  function planForScope(scope: (typeof CANONICAL_SCOPES)[number]) {
+    const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    return structuredClone(planResult.value);
+  }
+
+  function expectScopePolicyFailure(plan: ReturnType<typeof planForScope>): void {
+    const result = packageExport(packageInputFor({ ok: true, value: plan }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_SCOPE_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
+  }
+
+  it('canonical output_b scope succeeds: one Output B, no Output A', () => {
+    const plan = planForScope(CANONICAL_SCOPES[1]!);
+    expect(plan.selection.outputsA).toHaveLength(0);
+    expect(plan.selection.outputsB.length).toBeGreaterThan(0);
+    expect(packageExport(packageInputFor({ ok: true, value: plan })).ok).toBe(true);
+  });
+
+  it('output_b scope with an injected selected Output A (policy.outputA is false): typed failure, no bytes', () => {
+    const plan = planForScope(CANONICAL_SCOPES[1]!);
+    const pairPlan = planForScope(CANONICAL_SCOPES[2]!);
+    const mutated = {
+      ...plan,
+      selection: { ...plan.selection, outputsA: pairPlan.selection.outputsA },
+    };
+    expectScopePolicyFailure(mutated);
+  });
+
+  it('canonical group_b scope succeeds: Output B/group content only, no Output A', () => {
+    const plan = planForScope(CANONICAL_SCOPES[5]!);
+    expect(plan.selection.outputsA).toHaveLength(0);
+    expect(plan.selection.outputsB.length).toBeGreaterThan(0);
+    expect(packageExport(packageInputFor({ ok: true, value: plan })).ok).toBe(true);
+  });
+
+  it('group_b scope with an injected selected Output A (policy.outputA is false): typed failure', () => {
+    const plan = planForScope(CANONICAL_SCOPES[5]!);
+    const pairPlan = planForScope(CANONICAL_SCOPES[2]!);
+    const mutated = {
+      ...plan,
+      selection: { ...plan.selection, outputsA: pairPlan.selection.outputsA },
+    };
+    expectScopePolicyFailure(mutated);
+  });
+
+  it('canonical cover scope succeeds with cover content only, no Output A/B', () => {
+    const plan = planForScope(CANONICAL_SCOPES[6]!);
+    expect(plan.selection.outputsA).toHaveLength(0);
+    expect(plan.selection.outputsB).toHaveLength(0);
+    expect(plan.selection.covers.length).toBeGreaterThan(0);
+    expect(packageExport(packageInputFor({ ok: true, value: plan })).ok).toBe(true);
+  });
+
+  it('cover scope with an injected selected Output A (policy.outputA is false): typed failure', () => {
+    const plan = planForScope(CANONICAL_SCOPES[6]!);
+    const pairPlan = planForScope(CANONICAL_SCOPES[2]!);
+    const mutated = {
+      ...plan,
+      selection: { ...plan.selection, outputsA: pairPlan.selection.outputsA },
+    };
+    expectScopePolicyFailure(mutated);
+  });
+
+  it('canonical execution_plan scope succeeds with execution-plan content only, no Output A/B', () => {
+    const plan = planForScope(CANONICAL_SCOPES[8]!);
+    expect(plan.selection.outputsA).toHaveLength(0);
+    expect(plan.selection.outputsB).toHaveLength(0);
+    expect(plan.selection.executionPlans.length).toBeGreaterThan(0);
+    expect(packageExport(packageInputFor({ ok: true, value: plan })).ok).toBe(true);
+  });
+
+  it('execution_plan scope with an injected selected Output A (policy.outputA is false): typed failure', () => {
+    const plan = planForScope(CANONICAL_SCOPES[8]!);
+    const pairPlan = planForScope(CANONICAL_SCOPES[2]!);
+    const mutated = {
+      ...plan,
+      selection: { ...plan.selection, outputsA: pairPlan.selection.outputsA },
+    };
+    expectScopePolicyFailure(mutated);
+  });
+
+  it('execution_plan scope with an injected selected Output B (policy.outputB is false): typed failure', () => {
+    const plan = planForScope(CANONICAL_SCOPES[8]!);
+    const pairPlan = planForScope(CANONICAL_SCOPES[2]!);
+    const mutated = {
+      ...plan,
+      selection: { ...plan.selection, outputsB: pairPlan.selection.outputsB },
+    };
+    expectScopePolicyFailure(mutated);
+  });
+
+  it('a scope whose resolved policy disables cover (session scope, policy.cover flipped false) with selection.covers still populated: typed failure', () => {
+    const plan = planForScope(CANONICAL_SCOPES[7]!);
+    expect(plan.selection.covers.length).toBeGreaterThan(0);
+    const mutated = {
+      ...plan,
+      scope: { ...plan.scope, policy: { ...plan.scope.policy, cover: false } },
+    };
+    expectScopePolicyFailure(mutated);
+  });
+
+  it('a scope whose resolved policy disables execution plans (session scope, policy.executionPlans flipped false) with selection.executionPlans still populated: typed failure', () => {
+    const plan = planForScope(CANONICAL_SCOPES[7]!);
+    expect(plan.selection.executionPlans.length).toBeGreaterThan(0);
+    const mutated = {
+      ...plan,
+      scope: { ...plan.scope, policy: { ...plan.scope.policy, executionPlans: false } },
+    };
+    expectScopePolicyFailure(mutated);
+  });
+
+  it('hasScopePolicyViolation never trips on any reachable canonical (non-hostile) scope fixture', () => {
+    for (const scope of CANONICAL_SCOPES) {
+      if (scope.scopeDetail === 'backup' || scope.scopeDetail === 'prompt_pack') continue;
+      const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope });
+      if (!planResult.ok) continue;
+      expect(hasScopePolicyViolation(planResult.value)).toBe(false);
+    }
+  });
+});
+
+describe('Fifth Corrective C2 - resolved-scope-ID anchoring for selected/referenced output ids', () => {
+  function outputAOnlyPlan() {
+    const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: CANONICAL_SCOPES[0]! });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    expect(planResult.value.selection.outputsA).toHaveLength(1);
+    expect(planResult.value.selection.outputsB).toHaveLength(0);
+    return structuredClone(planResult.value);
+  }
+
+  function outputBOnlyPlan() {
+    const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: CANONICAL_SCOPES[1]! });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    expect(planResult.value.selection.outputsA).toHaveLength(0);
+    expect(planResult.value.selection.outputsB).toHaveLength(1);
+    return structuredClone(planResult.value);
+  }
+
+  function groupBOnlyPlan() {
+    const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: CANONICAL_SCOPES[5]! });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    expect(planResult.value.selection.outputsA).toHaveLength(0);
+    expect(planResult.value.selection.outputsB.length).toBeGreaterThan(0);
+    return structuredClone(planResult.value);
+  }
+
+  function pairPlan() {
+    const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: CANONICAL_SCOPES[2]! });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    return structuredClone(planResult.value);
+  }
+
+  /** Two real, independent sessions, each with its own genuinely-selected, genuinely-linked Output A/B pair. */
+  function twoSessionPlan() {
+    const project = structuredClone(CANONICAL_PROJECT) as Project;
+    const original = project.sessions[CANONICAL_SESSION_ID]!;
+    const originalScene = original.scenes[CANONICAL_SCENE_ID]!;
+    const secondSessionId = 'session-second' as SessionId;
+    const secondSceneId = 'scene-second' as SceneId;
+    const secondOutputAId = 'output-a-second' as OutputAId;
+    const secondOutputBId = 'output-b-second' as OutputBId;
+    const secondScene = {
+      ...originalScene,
+      id: secondSceneId,
+      sessionId: secondSessionId,
+      outputA: { ...originalScene.outputA, id: secondOutputAId, sceneId: secondSceneId },
+      outputB: {
+        ...originalScene.outputB!,
+        id: secondOutputBId,
+        sceneId: secondSceneId,
+        sourceOutputAId: secondOutputAId,
+      },
+    };
+    const secondGroupId = 'group-second' as GroupId;
+    const secondSession = {
+      ...original,
+      id: secondSessionId,
+      scenes: { [secondSceneId]: secondScene },
+      sceneOrder: [secondSceneId],
+      groups: {
+        [secondGroupId]: {
+          ...Object.values(original.groups)[0]!,
+          id: secondGroupId,
+          sessionId: secondSessionId,
+          sceneIds: [secondSceneId],
+        },
+      },
+      cover: {
+        ...original.cover!,
+        id: 'cover-second' as CoverId,
+        sessionId: secondSessionId,
+        sourceSaleImageIds: [secondOutputAId],
+      },
+    };
+    project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
+    project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
+
+    const planResult = createExportPlan({
+      ...CANONICAL_EXPORT_INPUT,
+      source: { ...CANONICAL_EXPORT_INPUT.source, project },
+      scope: { baseScope: ExportScope.All, scopeDetail: 'complete_project' },
+    });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    return { plan: structuredClone(planResult.value), secondSessionId };
+  }
+
+  /** A single `group_a` scope spanning two real scenes in one session - two in-scope Output A identities, no Output B at all. */
+  function twoSceneGroupAPlan() {
+    const base = createCanonicalMultiSceneExportInput();
+    const project = structuredClone(base.source.project) as Project;
+    const session = project.sessions[CANONICAL_SESSION_ID]!;
+    const [firstGroupId] = Object.keys(session.groups) as GroupId[];
+    const [firstSceneId, secondSceneId] = session.sceneOrder;
+    const mergedGroup = {
+      ...session.groups[firstGroupId!]!,
+      groupBy: GroupBy.Color,
+      key: CANONICAL_SCENE.paletteColorId,
+      sceneIds: [firstSceneId!, secondSceneId!],
+    };
+    project.sessions = {
+      [CANONICAL_SESSION_ID]: { ...session, groups: { [firstGroupId!]: mergedGroup } },
+    };
+    const planResult = createExportPlan({
+      ...base,
+      source: { ...base.source, project },
+      scope: {
+        baseScope: ExportScope.Group,
+        scopeDetail: 'group_a',
+        sessionId: CANONICAL_SESSION_ID,
+        groupId: firstGroupId!,
+      },
+    });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    expect(planResult.value.selection.outputsA).toHaveLength(2);
+    return structuredClone(planResult.value);
+  }
+
+  function expectRelationalFailure(plan: ReturnType<typeof pairPlan>): void {
+    const result = packageExport(packageInputFor({ ok: true, value: plan }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
+  }
+
+  describe('B-only scopes (output_b, group_b)', () => {
+    const scopes: readonly [string, () => ReturnType<typeof outputBOnlyPlan>][] = [
+      ['output_b', outputBOnlyPlan],
+      ['group_b', groupBOnlyPlan],
+    ];
+    for (const [scopeName, planFactory] of scopes) {
+      it(`${scopeName}: jointly forging sourceOutputAId and numbering.outputAId to the same fake (out-of-scope) id: typed failure`, () => {
+        const plan = planFactory();
+        const fakeId = 'output-a-nonexistent-fake' as OutputAId;
+        const mutated = {
+          ...plan,
+          selection: {
+            ...plan.selection,
+            outputsB: plan.selection.outputsB.map((b) => ({ ...b, sourceOutputAId: fakeId })),
+          },
+          numbering: plan.numbering.map((n) => ({ ...n, outputAId: fakeId })),
+        };
+        expectRelationalFailure(mutated);
+      });
+
+      it(`${scopeName}: jointly forging Output B's id and numbering.outputBId to the same fake (out-of-scope) id: typed failure`, () => {
+        const plan = planFactory();
+        const fakeId = 'output-b-nonexistent-fake' as OutputBId;
+        const mutated = {
+          ...plan,
+          selection: {
+            ...plan.selection,
+            outputsB: plan.selection.outputsB.map((b) => ({ ...b, id: fakeId })),
+          },
+          numbering: plan.numbering.map((n) => ({ ...n, outputBId: fakeId })),
+        };
+        expectRelationalFailure(mutated);
+      });
+
+      it(`${scopeName}: mutating the selected Output B's own id alone (numbering still pointing at the real id): typed failure`, () => {
+        const plan = planFactory();
+        const mutated = {
+          ...plan,
+          selection: {
+            ...plan.selection,
+            outputsB: plan.selection.outputsB.map((b) => ({
+              ...b,
+              id: 'output-b-nonexistent-fake' as OutputBId,
+            })),
+          },
+        };
+        expectRelationalFailure(mutated);
+      });
+    }
+  });
+
+  describe('A-only scopes (output_a, group_a)', () => {
+    it('output_a: canonical plan succeeds', () => {
+      const plan = outputAOnlyPlan();
+      expect(packageExport(packageInputFor({ ok: true, value: plan })).ok).toBe(true);
+    });
+
+    it('output_a: jointly forging Output A id and numbering.outputAId to the same fake (out-of-scope) id: typed failure', () => {
+      const plan = outputAOnlyPlan();
+      const fakeId = 'output-a-nonexistent-fake' as OutputAId;
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsA: plan.selection.outputsA.map((a) => ({ ...a, id: fakeId })),
+        },
+        numbering: plan.numbering.map((n) => ({ ...n, outputAId: fakeId })),
+      };
+      expectRelationalFailure(mutated);
+    });
+
+    it('group_a: a selected Output A whose id belongs to a different in-scope scene (same group): typed failure', () => {
+      const plan = twoSceneGroupAPlan();
+      const [firstOutputA, secondOutputA] = plan.selection.outputsA;
+      // firstOutputA keeps its own sessionId/sceneId identity, but its `id`
+      // (and its own numbering row's outputAId, forged to agree with it) is
+      // replaced by secondOutputA's real, genuinely-in-scope id - a jointly
+      // self-consistent forgery that only membership in `scope.outputAIds`
+      // cannot catch, since that id really is a valid, in-scope value (just
+      // for a different identity).
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsA: plan.selection.outputsA.map((a) =>
+            a.id === firstOutputA!.id ? { ...a, id: secondOutputA!.id } : a,
+          ),
+        },
+        numbering: plan.numbering.map((n) =>
+          n.sceneId === firstOutputA!.sceneId ? { ...n, outputAId: secondOutputA!.id } : n,
+        ),
+      };
+      expectRelationalFailure(mutated);
+    });
+  });
+
+  describe('pair-bearing scopes', () => {
+    it('jointly forging Output A id, Output B sourceOutputAId, and numbering.outputAId to the same fake (out-of-scope) id: typed failure', () => {
+      const plan = pairPlan();
+      const fakeId = 'output-a-nonexistent-fake' as OutputAId;
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsA: plan.selection.outputsA.map((a) => ({ ...a, id: fakeId })),
+          outputsB: plan.selection.outputsB.map((b) => ({ ...b, sourceOutputAId: fakeId })),
+        },
+        numbering: plan.numbering.map((n) => ({ ...n, outputAId: fakeId })),
+      };
+      expectRelationalFailure(mutated);
+    });
+
+    it('jointly forging Output B id and numbering.outputBId to the same fake (out-of-scope) id: typed failure', () => {
+      const plan = pairPlan();
+      const fakeId = 'output-b-nonexistent-fake' as OutputBId;
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsB: plan.selection.outputsB.map((b) => ({ ...b, id: fakeId })),
+        },
+        numbering: plan.numbering.map((n) => ({ ...n, outputBId: fakeId })),
+      };
+      expectRelationalFailure(mutated);
+    });
+
+    // KNOWN, DOCUMENTED LIMITATION - not closed by this corrective. A full,
+    // *bijective* exchange of two real, in-scope identities' Output A ids
+    // (each identity's own id, sourceOutputAId, and numbering.outputAId are
+    // *all* jointly re-forged together to the other's real id) currently
+    // passes every check in `hasRelationalIntegrityViolation`. This is not
+    // an oversight: every check available to a pure internal-consistency
+    // validator is either a per-field agreement check (defeated here
+    // because both sides forge every dependent field together) or a
+    // reverse-uniqueness/no-duplicate-claim check (defeated here because a
+    // bijective swap claims each real id exactly once - just via the wrong
+    // identity - so no id is ever claimed twice and no uniqueness
+    // constraint is violated). Detecting this specific attack would require
+    // an external ground-truth mapping from each `(sessionId, sceneId)`
+    // identity to *its own* correct resolved id - but `ExportResolvedScope`
+    // deliberately exposes only flat, per-category existence allowlists
+    // (`outputAIds`/`outputBIds`), not a keyed identity->id map, and scene
+    // ids are not even guaranteed 1:1 positionally alignable with output ids
+    // (a scene may legitimately have no Output A outside `output_a`-shaped
+    // scopes). Closing this would require either a schema change to the
+    // frozen `ExportResolvedScope` contract, or re-deriving from the source
+    // project inside packaging - both out of scope (the former needs
+    // explicit spec authorization; the latter would break the terminal,
+    // read-only packaging architecture every corrective through this one
+    // has preserved). Exploiting it also requires the attacker to already
+    // fully control `ExportPlanResult` construction, bypassing
+    // `createExportPlan` entirely - at that point every field, including
+    // any additional cross-check field, is equally forgeable together.
+    it('DOCUMENTED LIMITATION: a fully bijective exchange of two real Output A ids between two in-scope pair-bearing identities is not currently detected', () => {
+      const { plan, secondSessionId } = twoSessionPlan();
+      const outputA1 = plan.selection.outputsA.find((a) => a.sessionId === CANONICAL_SESSION_ID)!;
+      const outputA2 = plan.selection.outputsA.find((a) => a.sessionId === secondSessionId)!;
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsA: plan.selection.outputsA.map((a) =>
+            a.sessionId === CANONICAL_SESSION_ID
+              ? { ...a, id: outputA2.id }
+              : a.sessionId === secondSessionId
+                ? { ...a, id: outputA1.id }
+                : a,
+          ),
+          outputsB: plan.selection.outputsB.map((b) =>
+            b.sessionId === CANONICAL_SESSION_ID
+              ? { ...b, sourceOutputAId: outputA2.id }
+              : b.sessionId === secondSessionId
+                ? { ...b, sourceOutputAId: outputA1.id }
+                : b,
+          ),
+        },
+        numbering: plan.numbering.map((n) =>
+          n.sessionId === CANONICAL_SESSION_ID
+            ? { ...n, outputAId: outputA2.id }
+            : n.sessionId === secondSessionId
+              ? { ...n, outputAId: outputA1.id }
+              : n,
+        ),
+      };
+      const result = packageExport(packageInputFor({ ok: true, value: mutated }));
+      // Documents actual current behavior (accepted) - see the block
+      // comment above for why this is a known, out-of-scope architectural
+      // limitation rather than an unaddressed finding.
+      expect(result.ok).toBe(true);
+    });
+  });
+});
+
+describe('Fifth Corrective C3 - resolved scope identity-allowlist arrays must be duplicate-free', () => {
+  /** A real, non-hostile plan with two real, distinct identities in every relevant scope array. */
+  function twoSessionComplexPlan() {
+    const project = structuredClone(CANONICAL_PROJECT) as Project;
+    const original = project.sessions[CANONICAL_SESSION_ID]!;
+    const originalScene = original.scenes[CANONICAL_SCENE_ID]!;
+    const secondSessionId = 'session-second' as SessionId;
+    const secondSceneId = 'scene-second' as SceneId;
+    const secondOutputAId = 'output-a-second' as OutputAId;
+    const secondOutputBId = 'output-b-second' as OutputBId;
+    const secondScene = {
+      ...originalScene,
+      id: secondSceneId,
+      sessionId: secondSessionId,
+      outputA: { ...originalScene.outputA, id: secondOutputAId, sceneId: secondSceneId },
+      outputB: {
+        ...originalScene.outputB!,
+        id: secondOutputBId,
+        sceneId: secondSceneId,
+        sourceOutputAId: secondOutputAId,
+      },
+    };
+    const secondGroupId = 'group-second' as GroupId;
+    const secondSession = {
+      ...original,
+      id: secondSessionId,
+      scenes: { [secondSceneId]: secondScene },
+      sceneOrder: [secondSceneId],
+      groups: {
+        [secondGroupId]: {
+          ...Object.values(original.groups)[0]!,
+          id: secondGroupId,
+          sessionId: secondSessionId,
+          sceneIds: [secondSceneId],
+        },
+      },
+      cover: {
+        ...original.cover!,
+        id: 'cover-second' as CoverId,
+        sessionId: secondSessionId,
+        sourceSaleImageIds: [secondOutputAId],
+      },
+    };
+    project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
+    project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
+
+    const planResult = createExportPlan({
+      ...CANONICAL_EXPORT_INPUT,
+      source: { ...CANONICAL_EXPORT_INPUT.source, project },
+      scope: { baseScope: ExportScope.All, scopeDetail: 'complete_project' },
+    });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    return structuredClone(planResult.value);
+  }
+
+  it('a genuine two-session plan has zero duplicates in every checked scope array', () => {
+    const plan = twoSessionComplexPlan();
+    expect(hasDuplicateScopeIdentifiers(plan)).toBe(false);
+    expect(new Set(plan.scope.sessionIds).size).toBe(plan.scope.sessionIds.length);
+    expect(new Set(plan.scope.groupIds).size).toBe(plan.scope.groupIds.length);
+    expect(new Set(plan.scope.outputAIds).size).toBe(plan.scope.outputAIds.length);
+    expect(new Set(plan.scope.outputBIds).size).toBe(plan.scope.outputBIds.length);
+    expect(new Set(plan.scope.coverIds).size).toBe(plan.scope.coverIds.length);
+  });
+
+  it('scope.sessionIds = [sameSession, sameSession]: hasDuplicateScopeIdentifiers is true and packaging fails closed', () => {
+    const plan = twoSessionComplexPlan();
+    const duplicated = {
+      ...plan,
+      scope: { ...plan.scope, sessionIds: [CANONICAL_SESSION_ID, CANONICAL_SESSION_ID] },
+    };
+    expect(hasDuplicateScopeIdentifiers(duplicated)).toBe(true);
+    const result = packageExport(packageInputFor({ ok: true, value: duplicated }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_SCOPE_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
+  });
+
+  it('a duplicated real id in scope.groupIds is rejected', () => {
+    const plan = twoSessionComplexPlan();
+    const [firstGroupId] = plan.scope.groupIds;
+    const duplicated = {
+      ...plan,
+      scope: { ...plan.scope, groupIds: [firstGroupId!, firstGroupId!] },
+    };
+    expect(hasDuplicateScopeIdentifiers(duplicated)).toBe(true);
+  });
+
+  it('a duplicated real id in scope.outputAIds is rejected', () => {
+    const plan = twoSessionComplexPlan();
+    const [firstOutputAId] = plan.scope.outputAIds;
+    const duplicated = {
+      ...plan,
+      scope: { ...plan.scope, outputAIds: [firstOutputAId!, firstOutputAId!] },
+    };
+    expect(hasDuplicateScopeIdentifiers(duplicated)).toBe(true);
+  });
+
+  it('a duplicated real id in scope.outputBIds is rejected', () => {
+    const plan = twoSessionComplexPlan();
+    const [firstOutputBId] = plan.scope.outputBIds;
+    const duplicated = {
+      ...plan,
+      scope: { ...plan.scope, outputBIds: [firstOutputBId!, firstOutputBId!] },
+    };
+    expect(hasDuplicateScopeIdentifiers(duplicated)).toBe(true);
+  });
+
+  it('a duplicated real id in scope.coverIds is rejected', () => {
+    const plan = twoSessionComplexPlan();
+    const [firstCoverId] = plan.scope.coverIds;
+    const duplicated = {
+      ...plan,
+      scope: { ...plan.scope, coverIds: [firstCoverId!, firstCoverId!] },
+    };
+    expect(hasDuplicateScopeIdentifiers(duplicated)).toBe(true);
+  });
+
+  it('a duplicated id in scope.versionIds is rejected (unreachable in practice - version_snapshot/backup are already rejected earlier - checked directly for defense-in-depth)', () => {
+    const plan = twoSessionComplexPlan();
+    const duplicated = {
+      ...plan,
+      scope: { ...plan.scope, versionIds: ['version-1', 'version-1'] as never },
+    };
+    expect(hasDuplicateScopeIdentifiers(duplicated)).toBe(true);
+  });
+
+  it('reversing a valid, unique scope.sessionIds array does not itself trigger a duplicate rejection', () => {
+    const plan = twoSessionComplexPlan();
+    const reversed = {
+      ...plan,
+      scope: { ...plan.scope, sessionIds: [...plan.scope.sessionIds].reverse() },
+    };
+    expect(hasDuplicateScopeIdentifiers(reversed)).toBe(false);
+  });
+
+  it('scope.sceneIds legitimately containing the same string twice (reused across two different sessions) is NOT treated as a duplicate-scope violation', () => {
+    // Scene ids are only unique within their own session (EX §12 Third
+    // Corrective F2) - a flat, session-less scope.sceneIds array spanning
+    // two sessions that each name a scene the same thing is valid, not
+    // corrupt. Content construction is keyed by the complete
+    // (sessionId, sceneId) identity throughout, so this can never cause the
+    // double-emission this check exists to prevent.
+    const plan = twoSessionComplexPlan();
+    const reusedSceneIds = {
+      ...plan,
+      scope: { ...plan.scope, sceneIds: [CANONICAL_SCENE_ID, CANONICAL_SCENE_ID] },
+    };
+    expect(hasDuplicateScopeIdentifiers(reusedSceneIds)).toBe(false);
+  });
+});
+
+describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity is the complete (sessionId, sceneId) pair, not sceneId alone)', () => {
+  /**
+   * Two real, independent sessions whose only scene literally shares the
+   * *same* `SceneId` string (`CANONICAL_SCENE_ID`) - shape-valid, since
+   * scene ids are only unique within their own session - unlike the Fourth
+   * Corrective's `twoSessionPairPlan()` helper (used elsewhere in this
+   * file), which gives each session a distinct scene id and therefore never
+   * actually exercises the reused-sceneId condition this matrix requires
+   * (Fifth Corrective audit F5).
+   */
+  function sameSceneIdTwoSessionPlan() {
+    const project = structuredClone(CANONICAL_PROJECT) as Project;
+    const original = project.sessions[CANONICAL_SESSION_ID]!;
+    const originalScene = original.scenes[CANONICAL_SCENE_ID]!;
+    const secondSessionId = 'session-second' as SessionId;
+    const secondOutputAId = 'output-a-second' as OutputAId;
+    const secondOutputBId = 'output-b-second' as OutputBId;
+    const secondScene = {
+      ...originalScene,
+      sessionId: secondSessionId,
+      outputA: { ...originalScene.outputA, id: secondOutputAId, sceneId: CANONICAL_SCENE_ID },
+      outputB: {
+        ...originalScene.outputB!,
+        id: secondOutputBId,
+        sceneId: CANONICAL_SCENE_ID,
+        sourceOutputAId: secondOutputAId,
+      },
+    };
+    const secondGroupId = 'group-second' as GroupId;
+    const secondSession = {
+      ...original,
+      id: secondSessionId,
+      scenes: { [CANONICAL_SCENE_ID]: secondScene },
+      groups: {
+        [secondGroupId]: {
+          ...Object.values(original.groups)[0]!,
+          id: secondGroupId,
+          sessionId: secondSessionId,
+          sceneIds: [CANONICAL_SCENE_ID],
+        },
+      },
+      cover: {
+        ...original.cover!,
+        id: 'cover-second' as CoverId,
+        sessionId: secondSessionId,
+        sourceSaleImageIds: [secondOutputAId],
+      },
+    };
+    project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
+    project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
+
+    const planResult = createExportPlan({
+      ...CANONICAL_EXPORT_INPUT,
+      source: { ...CANONICAL_EXPORT_INPUT.source, project },
+      scope: { baseScope: ExportScope.All, scopeDetail: 'complete_project' },
+    });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    return { plan: structuredClone(planResult.value), secondSessionId };
+  }
+
+  it('item 1: both sessions valid (same reused sceneId), each with its own genuine pair: one prompt_a/prompt_b/prompt_pair per session', () => {
+    const { plan } = sameSceneIdTwoSessionPlan();
+    const result = packageExport(packageInputFor({ ok: true, value: plan }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    for (const sessionFolder of ['session-01', 'session-02']) {
+      const kinds = result.entries
+        .filter((entry) => entry.path.includes(`/${sessionFolder}/`))
+        .map((entry) => entry.kind);
+      expect(kinds.filter((kind) => kind === 'prompt_a')).toHaveLength(1);
+      expect(kinds.filter((kind) => kind === 'prompt_b')).toHaveLength(1);
+      expect(kinds.filter((kind) => kind === 'prompt_pair')).toHaveLength(1);
+    }
+  });
+
+  it('item 2: session 2 has no selected Output A/B (same reused sceneId) - session 1 real pair never leaks into session 2', () => {
+    const { plan, secondSessionId } = sameSceneIdTwoSessionPlan();
+    const stripped = {
+      ...plan,
+      selection: {
+        ...plan.selection,
+        outputsA: plan.selection.outputsA.filter((a) => a.sessionId !== secondSessionId),
+        outputsB: plan.selection.outputsB.filter((b) => b.sessionId !== secondSessionId),
+      },
+    };
+    const result = packageExport(packageInputFor({ ok: true, value: stripped }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const session02Kinds = result.entries
+      .filter((entry) => entry.path.includes('/session-02/'))
+      .map((entry) => entry.kind);
+    expect(session02Kinds).not.toContain('prompt_a');
+    expect(session02Kinds).not.toContain('prompt_b');
+    expect(session02Kinds).not.toContain('prompt_pair');
+    const session01Kinds = result.entries
+      .filter((entry) => entry.path.includes('/session-01/'))
+      .map((entry) => entry.kind);
+    expect(session01Kinds).toContain('prompt_a');
+    expect(session01Kinds).toContain('prompt_b');
+    expect(session01Kinds).toContain('prompt_pair');
+  });
+
+  it('item 3: session 2 Output B points at session 1 Output A (same reused sceneId): typed failure', () => {
+    const { plan } = sameSceneIdTwoSessionPlan();
+    const session1OutputA = plan.selection.outputsA.find(
+      (item) => item.sessionId === CANONICAL_SESSION_ID,
+    )!;
+    const mutated = {
+      ...plan,
+      selection: {
+        ...plan.selection,
+        outputsB: plan.selection.outputsB.map((outputB) =>
+          outputB.sessionId !== CANONICAL_SESSION_ID
+            ? { ...outputB, sourceOutputAId: session1OutputA.id }
+            : outputB,
+        ),
+      },
+    };
+    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
+  });
+
+  it('item 4: session 2 numbering forged to reference session 1 real ids, session 2 Output B still genuinely selected (same reused sceneId): typed failure', () => {
+    const { plan } = sameSceneIdTwoSessionPlan();
+    const session1Numbering = plan.numbering.find(
+      (item) => item.sessionId === CANONICAL_SESSION_ID,
+    )!;
+    const mutated = {
+      ...plan,
+      numbering: plan.numbering.map((entry) =>
+        entry.sessionId !== CANONICAL_SESSION_ID
+          ? {
+              ...entry,
+              outputAId: session1Numbering.outputAId,
+              outputBId: session1Numbering.outputBId,
+            }
+          : entry,
+      ),
+    };
+    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
+  });
+
+  it('item 5: reversing session order and A/B/numbering array order produces an identical, successful per-scene result (same reused sceneId)', () => {
+    const { plan } = sameSceneIdTwoSessionPlan();
+    const forward = packageExport(packageInputFor({ ok: true, value: plan }));
+    const reversedPlan = {
+      ...plan,
+      selection: {
+        ...plan.selection,
+        outputsA: [...plan.selection.outputsA].reverse(),
+        outputsB: [...plan.selection.outputsB].reverse(),
+      },
+      numbering: [...plan.numbering].reverse(),
+    };
+    const reversed = packageExport(packageInputFor({ ok: true, value: reversedPlan }));
+    expect(forward.ok).toBe(true);
+    expect(reversed.ok).toBe(true);
+    if (!forward.ok || !reversed.ok) return;
+    // As in the Fourth Corrective's equivalent test: whole-project aggregate
+    // files (readme/manifest/checksums) legitimately document sessions in
+    // array-traversal order, so only path/kind/byteLength are compared for
+    // those; every other, single-identity-scoped file must be byte-for-byte
+    // identical regardless of array insertion order.
+    const AGGREGATE_KINDS = new Set(['readme', 'manifest', 'checksums']);
+    const normalize = (entry: (typeof forward.entries)[number]) =>
+      AGGREGATE_KINDS.has(entry.kind)
+        ? { path: entry.path, kind: entry.kind, byteLength: entry.byteLength }
+        : entry;
+    const sortByPath = (entries: typeof forward.entries) =>
+      [...entries].map(normalize).sort((a, b) => (a.path < b.path ? -1 : 1));
+    expect(sortByPath(reversed.entries)).toEqual(sortByPath(forward.entries));
   });
 });
