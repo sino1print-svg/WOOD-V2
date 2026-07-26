@@ -1,16 +1,29 @@
 /**
- * Consolidated Final Corrective §21 - committed, reproducible external ZIP
- * verification.
+ * Consolidated Final Corrective §21 / Deficiency Closure §11 - committed,
+ * reproducible external ZIP verification.
  *
  * Generates all 10 locked golden ZIP fixtures (plus one deliberately
  * physically-reordered-but-Info-ZIP-tolerated hostile archive) from the
  * *current* code via `test/export-engine/packaging/golden-zip-dump.test.ts`,
- * then independently verifies every fixture using the system `unzip`
- * binary - never trusting the writer's own bookkeeping. Prints one PASS/FAIL
- * row per fixture and exits non-zero on any failure.
+ * then independently verifies every fixture using the system `unzip` binary
+ * - never trusting the writer's own in-memory bookkeeping. Prints one
+ * PASS/FAIL row per fixture and exits non-zero on any failure.
+ *
+ * Deficiency Closure §11 closes F8: the on-disk `checksums.sha256` is parsed
+ * into an ordered path->digest map and reconciled against SHA-256 digests
+ * freshly recomputed from the *extracted* bytes on disk (not the in-memory
+ * packaging ledger); the on-disk `manifest.json` is validated with the same
+ * authoritative schema validator packaging itself uses
+ * (`validateExportManifestShape`) and its `includedFiles`/`fileSizes`/
+ * `checksums` are reconciled against the real extracted directory listing.
+ * Either bookkeeping file being tampered on disk - independent of whatever
+ * the in-memory ledger still says - must be caught here. The pure
+ * reconciliation logic lives in `scripts/zip-external-verification.mts`.
  *
  * This is a verification script, not the pure packaging core, so it may use
- * Node filesystem/process APIs and shell out to `unzip` directly.
+ * Node filesystem/process APIs, shell out to `unzip`, and run under
+ * `vite-node` (a script, not a public packaging function - the "never
+ * throws" boundary applies to `src/export/packaging`, not to this CLI tool).
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -18,10 +31,22 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  findSingleFile,
+  listFilesRecursive,
+  verifyChecksumsFileOnDisk,
+  verifyManifestFileOnDisk,
+} from './zip-external-verification.mts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-function ensureUnzipAvailable() {
+interface LedgerEntry {
+  readonly path: string;
+  readonly kind: string;
+  readonly checksum: string;
+}
+
+function ensureUnzipAvailable(): void {
   try {
     execFileSync('unzip', ['-v'], { stdio: 'pipe' });
   } catch {
@@ -33,7 +58,7 @@ function ensureUnzipAvailable() {
   }
 }
 
-function isUnsafeListedPath(candidate) {
+function isUnsafeListedPath(candidate: string): boolean {
   return (
     candidate.startsWith('/') ||
     candidate.includes('..') ||
@@ -44,7 +69,7 @@ function isUnsafeListedPath(candidate) {
 }
 
 /** Parses `unzip -l` output into an array of listed entry paths. */
-function parseUnzipListing(listingText) {
+function parseUnzipListing(listingText: string): string[] {
   const lines = listingText.split('\n');
   // Header: "Archive: ...", "  Length ... Name", "--------- ... ----"
   // Footer: "---------  ... -------", "N     N files"
@@ -55,37 +80,13 @@ function parseUnzipListing(listingText) {
     .map((line) => line.split(/\s+/).slice(3).join(' '));
 }
 
-function verifyChecksumsFileOnDisk(text, problems, label) {
-  if (text.length >= 3 && text.charCodeAt(0) === 0xfeff) {
-    problems.push(`${label}: unexpected BOM`);
-    return;
-  }
-  if (text.includes('\r')) {
-    problems.push(`${label}: unexpected CR`);
-    return;
-  }
-  const lines = text.length === 0 ? [] : text.replace(/\n$/, '').split('\n');
-  const linePattern = /^[a-f0-9]{64} {2}.+$/;
-  for (const line of lines) {
-    if (!linePattern.test(line)) {
-      problems.push(`${label}: malformed line: ${line}`);
-    }
-  }
-}
-
-function verifyManifestFileOnDisk(text, problems, label) {
-  try {
-    const parsed = JSON.parse(text);
-    if (typeof parsed !== 'object' || parsed === null) {
-      problems.push(`${label}: parsed value is not an object`);
-    }
-  } catch {
-    problems.push(`${label}: failed to parse as JSON`);
-  }
-}
-
-function verifyOneFixture(name, zipPath, entries, dumpDir) {
-  const problems = [];
+function verifyOneFixture(
+  name: string,
+  zipPath: string,
+  entries: readonly LedgerEntry[],
+  dumpDir: string,
+): { readonly pass: boolean; readonly line: string } {
+  const problems: string[] = [];
 
   try {
     execFileSync('unzip', ['-t', zipPath], { stdio: 'pipe' });
@@ -93,7 +94,7 @@ function verifyOneFixture(name, zipPath, entries, dumpDir) {
     problems.push('unzip -t reported errors');
   }
 
-  let listedPaths = [];
+  let listedPaths: string[] = [];
   try {
     const listing = execFileSync('unzip', ['-l', zipPath], { encoding: 'utf8' });
     listedPaths = parseUnzipListing(listing);
@@ -123,8 +124,8 @@ function verifyOneFixture(name, zipPath, entries, dumpDir) {
   }
 
   for (const entry of entries) {
-    const filePath = path.join(extractDir, entry.path);
-    let bytes;
+    const filePath = path.join(extractDir, ...entry.path.split('/'));
+    let bytes: Buffer;
     try {
       bytes = readFileSync(filePath);
     } catch {
@@ -137,23 +138,27 @@ function verifyOneFixture(name, zipPath, entries, dumpDir) {
     }
   }
 
+  // Deficiency Closure §11: independent, on-disk semantic reconciliation of
+  // the extracted bookkeeping files - never relying solely on the in-memory
+  // ledger above.
   const checksumsEntry = entries.find((entry) => entry.kind === 'checksums');
-  if (checksumsEntry !== undefined) {
-    try {
-      const text = readFileSync(path.join(extractDir, checksumsEntry.path), 'utf8');
-      verifyChecksumsFileOnDisk(text, problems, checksumsEntry.path);
-    } catch {
-      problems.push(`could not read ${checksumsEntry.path} for semantic verification`);
-    }
-  }
-
   const manifestEntry = entries.find((entry) => entry.kind === 'manifest');
-  if (manifestEntry !== undefined) {
-    try {
-      const text = readFileSync(path.join(extractDir, manifestEntry.path), 'utf8');
-      verifyManifestFileOnDisk(text, problems, manifestEntry.path);
-    } catch {
-      problems.push(`could not read ${manifestEntry.path} for semantic verification`);
+  if (checksumsEntry !== undefined || manifestEntry !== undefined) {
+    const projectRootFile =
+      checksumsEntry !== undefined
+        ? findSingleFile(extractDir, 'checksums.sha256')
+        : findSingleFile(extractDir, 'manifest.json');
+    if (projectRootFile === null) {
+      problems.push('could not locate the project root folder in the extracted archive');
+    } else {
+      const projectRoot = path.dirname(projectRootFile);
+      const realExtractedPaths = new Set(listFilesRecursive(projectRoot));
+      if (checksumsEntry !== undefined) {
+        verifyChecksumsFileOnDisk(projectRoot, realExtractedPaths, problems);
+      }
+      if (manifestEntry !== undefined) {
+        verifyManifestFileOnDisk(projectRoot, realExtractedPaths, problems);
+      }
     }
   }
 
@@ -166,7 +171,10 @@ function verifyOneFixture(name, zipPath, entries, dumpDir) {
   };
 }
 
-function verifyReorderedHostileCase(dumpDir) {
+function verifyReorderedHostileCase(dumpDir: string): {
+  readonly pass: boolean;
+  readonly line: string;
+} {
   const zipPath = path.join(dumpDir, 'reordered-hostile.zip');
   let externalAccepted = false;
   try {
@@ -178,7 +186,7 @@ function verifyReorderedHostileCase(dumpDir) {
 
   const verification = JSON.parse(
     readFileSync(path.join(dumpDir, 'reordered-hostile-verification.json'), 'utf8'),
-  );
+  ) as { ok: boolean; reason?: string; detail?: string };
   const internalRejectedAsExpected =
     verification.ok === false &&
     verification.reason === 'structural' &&
@@ -196,7 +204,7 @@ function verifyReorderedHostileCase(dumpDir) {
   };
 }
 
-function main() {
+function main(): void {
   ensureUnzipAvailable();
 
   const dumpDir = mkdtempSync(path.join(tmpdir(), 'golden-zip-external-'));
@@ -208,7 +216,10 @@ function main() {
       env: { ...process.env, GOLDEN_ZIP_DUMP_DIR: dumpDir },
     });
 
-    const ledger = JSON.parse(readFileSync(path.join(dumpDir, 'ledger.json'), 'utf8'));
+    const ledger = JSON.parse(readFileSync(path.join(dumpDir, 'ledger.json'), 'utf8')) as Record<
+      string,
+      LedgerEntry[]
+    >;
     for (const [name, entries] of Object.entries(ledger)) {
       const zipPath = path.join(dumpDir, `${name}.zip`);
       const row = verifyOneFixture(name, zipPath, entries, dumpDir);

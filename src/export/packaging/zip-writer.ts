@@ -75,7 +75,27 @@ export interface ZipWriteFailure {
     | 'archive_too_large'
     | 'unsafe_path'
     | 'duplicate_path'
-    | 'unordered_entries';
+    | 'unordered_entries'
+    | 'invalid_entries';
+}
+
+/**
+ * Deficiency Closure §10: `writeDeterministicZip` is exported through the
+ * packaging public surface and "no public packaging function may throw on
+ * hostile input" - null/non-array `entries`, a sparse array, an
+ * accessor-backed or `Proxy`-wrapped entry whose `path`/`bytes` getter
+ * throws, a non-string `path`, or non-`Uint8Array` `bytes` must all produce
+ * a typed failure, never a raw JS exception. Checked with plain indexed
+ * access (never `for...of`, which would invoke a hostile `Symbol.iterator`)
+ * before any byte is written, with the whole function additionally wrapped
+ * in `try`/`catch` as the final backstop for a throw from anywhere else
+ * (e.g. a getter that only throws on a later access).
+ */
+function isValidZipEntryShape(candidate: unknown): candidate is PackageEntry {
+  if (typeof candidate !== 'object' || candidate === null) return false;
+  const path: unknown = (candidate as { path?: unknown }).path;
+  const bytes: unknown = (candidate as { bytes?: unknown }).bytes;
+  return typeof path === 'string' && bytes instanceof Uint8Array;
 }
 
 /**
@@ -106,18 +126,21 @@ function findOrderingFailure(
   return null;
 }
 
-/**
- * Build a deterministic ZIP archive from already sorted, already path-safe
- * entries. The caller is responsible for path safety and byte-lexicographic
- * ordering; this function re-verifies both and fails closed rather than
- * silently reordering or truncating.
- */
-export function writeDeterministicZip(
+function writeDeterministicZipUnsafe(
   entries: readonly PackageEntry[],
   maxZipEntries: number,
   maxArchiveBytes: number,
 ): ZipWriteResult | ZipWriteFailure {
-  if (entries.length > maxZipEntries || entries.length > MAX_UINT16) {
+  if (!Array.isArray(entries)) return { ok: false, reason: 'invalid_entries' };
+  const entryCount = entries.length;
+  if (typeof entryCount !== 'number' || !Number.isInteger(entryCount) || entryCount < 0) {
+    return { ok: false, reason: 'invalid_entries' };
+  }
+  for (let index = 0; index < entryCount; index += 1) {
+    if (!isValidZipEntryShape(entries[index])) return { ok: false, reason: 'invalid_entries' };
+  }
+
+  if (entryCount > maxZipEntries || entryCount > MAX_UINT16) {
     return { ok: false, reason: 'too_many_entries' };
   }
   if (findUnsafePath(entries) !== null) return { ok: false, reason: 'unsafe_path' };
@@ -132,7 +155,8 @@ export function writeDeterministicZip(
     readonly size: number;
   }[] = [];
 
-  for (const entry of entries) {
+  for (let index = 0; index < entryCount; index += 1) {
+    const entry = entries[index]!;
     const nameBytes = encodeUtf8(entry.path);
     if (nameBytes.byteLength > MAX_UINT16 || entry.bytes.byteLength > MAX_UINT32) {
       return { ok: false, reason: 'entry_too_large' };
@@ -158,7 +182,8 @@ export function writeDeterministicZip(
   }
 
   const centralDirectoryStart = writer.length;
-  for (const record of centralDirectoryEntries) {
+  for (let index = 0; index < centralDirectoryEntries.length; index += 1) {
+    const record = centralDirectoryEntries[index]!;
     writer
       .uint32(CENTRAL_DIRECTORY_SIGNATURE)
       .uint16(VERSION_MADE_BY)
@@ -197,4 +222,29 @@ export function writeDeterministicZip(
 
   if (writer.length > maxArchiveBytes) return { ok: false, reason: 'archive_too_large' };
   return { ok: true, bytes: writer.finish() };
+}
+
+/**
+ * Build a deterministic ZIP archive from already sorted, already path-safe
+ * entries. The caller is responsible for path safety and byte-lexicographic
+ * ordering; this function re-verifies both and fails closed rather than
+ * silently reordering or truncating.
+ *
+ * Deficiency Closure §10: the outer `try`/`catch` is the final backstop for
+ * hostile runtime input that the up-front shape checks in
+ * `writeDeterministicZipUnsafe` cannot see coming - an accessor or `Proxy`
+ * trap that only throws on a later property access, for example - so this
+ * public function returns a typed failure rather than letting any exception
+ * escape, no matter where in the write path it originates.
+ */
+export function writeDeterministicZip(
+  entries: readonly PackageEntry[],
+  maxZipEntries: number,
+  maxArchiveBytes: number,
+): ZipWriteResult | ZipWriteFailure {
+  try {
+    return writeDeterministicZipUnsafe(entries, maxZipEntries, maxArchiveBytes);
+  } catch {
+    return { ok: false, reason: 'invalid_entries' };
+  }
 }

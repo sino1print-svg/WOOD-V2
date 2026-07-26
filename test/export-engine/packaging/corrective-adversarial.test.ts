@@ -441,7 +441,16 @@ describe('Third Corrective F2 - pair eligibility keyed by complete session+scene
     return { hostilePlan, secondSessionId };
   }
 
-  it('a shape-valid hostile plan reusing a sceneId across two sessions never lets session 1 authorize a pair file in session 2', () => {
+  it('a shape-valid hostile plan reusing a sceneId across two sessions is rejected outright rather than silently omitting session 2', () => {
+    // Deficiency Closure §6/F4: "do not treat absence as implicit omission" -
+    // session 2's selected Output A/B were stripped without any accompanying
+    // `plan.omissions`/`plan.issues` evidence, so the canonical Output A/B
+    // order check (numbering, filtered by *approved* omissions only) now
+    // disagrees with `plan.selection.outputsA`/`outputsB` and the whole plan
+    // is rejected before any content is built - strictly stronger than the
+    // old "succeeds but session 2 carries no leaked content" result, and it
+    // still proves session 1's real pair is never borrowed for session 2,
+    // since nothing is emitted at all.
     const { hostilePlan } = crossSessionHostilePlan();
     const result = packageExport(
       packageInputFromFormatter({
@@ -449,24 +458,10 @@ describe('Third Corrective F2 - pair eligibility keyed by complete session+scene
         limits: APP_CONFIG.limits.export,
       }),
     );
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // session-02 must carry no prompt_pair, prompt_a, or prompt_b - its own
-    // selection was stripped, and session 1's real A/B/pair must never be
-    // borrowed for it merely because the scene id happens to match.
-    const session02Kinds = result.entries
-      .filter((entry) => entry.path.includes('/session-02/'))
-      .map((entry) => entry.kind);
-    expect(session02Kinds).not.toContain('prompt_pair');
-    expect(session02Kinds).not.toContain('prompt_a');
-    expect(session02Kinds).not.toContain('prompt_b');
-    // Session 1's own legitimate pair is unaffected.
-    const session01Kinds = result.entries
-      .filter((entry) => entry.path.includes('/session-01/'))
-      .map((entry) => entry.kind);
-    expect(session01Kinds).toContain('prompt_pair');
-    expect(session01Kinds).toContain('prompt_a');
-    expect(session01Kinds).toContain('prompt_b');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
   });
 
   it('session 2 numbering forged to reference session 1 real output ids, with no Output A or B selected for session 2: rejected outright by the canonical numbering-sequence check', () => {
@@ -807,15 +802,14 @@ describe('Fourth Corrective C1/C2 - exact relational cardinality and B-only link
       }
     });
 
-    it('selected Output A/B array order reversed: identical (successful) result regardless of array insertion order', () => {
-      // Consolidated Final Corrective §8.2: `plan.numbering`'s own order is
-      // now a canonical, semantically-significant sequence that must equal
-      // `plan.scope.outputAIds` exactly (never sorted, never reordered) -
-      // so, unlike the selected-output arrays below, `numbering` itself is
-      // intentionally left untouched here rather than reversed too; a test
-      // that reverses `numbering` is a distinct hostile-input case (see
-      // "Consolidated Final Corrective §8" tests), not an
-      // insertion-order-independence case.
+    it('selected Output A/B array order reversed: rejected (canonical selected-output order is now semantically significant)', () => {
+      // Deficiency Closure §7/§8: `selection.outputsA`/`outputsB` must each
+      // equal the ordered subsequence of `scope.outputAIds`/`outputBIds`
+      // that survives approved-omission filtering - reversing either array
+      // changes it relative to that canonical order (§8.2's `numbering`
+      // sequence is unaffected either way), so what was previously accepted
+      // as an insertion-order-independence case is now itself one of the
+      // mandatory "selected A/B array reversed" rejection cases.
       const { plan } = twoSessionPairPlan();
       const forward = packageExport(packageInputFor({ ok: true, value: plan }));
       const reversedPlan = {
@@ -828,23 +822,10 @@ describe('Fourth Corrective C1/C2 - exact relational cardinality and B-only link
       };
       const reversed = packageExport(packageInputFor({ ok: true, value: reversedPlan }));
       expect(forward.ok).toBe(true);
-      expect(reversed.ok).toBe(true);
-      if (!forward.ok || !reversed.ok) return;
-      // Aggregate, whole-project files (README/manifest/checksums) legitimately
-      // document sessions in the order they appear in the plan's arrays, so
-      // reversing that order changes their listing text (and therefore their
-      // checksum) without indicating any relational-integrity problem. Every
-      // other file is scoped to a single session+scene by a `.filter`/`.find`
-      // keyed on identity, not by array position, so its content - and
-      // checksum - must stay byte-identical regardless of insertion order.
-      const AGGREGATE_KINDS = new Set(['readme', 'manifest', 'checksums']);
-      const normalize = (entry: (typeof forward.entries)[number]) =>
-        AGGREGATE_KINDS.has(entry.kind)
-          ? { path: entry.path, kind: entry.kind, byteLength: entry.byteLength }
-          : entry;
-      const sortByPath = (entries: typeof forward.entries) =>
-        [...entries].map(normalize).sort((a, b) => (a.path < b.path ? -1 : 1));
-      expect(sortByPath(reversed.entries)).toEqual(sortByPath(forward.entries));
+      expect(reversed.ok).toBe(false);
+      if (reversed.ok) return;
+      expect(reversed.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+      expect('zipBytes' in reversed).toBe(false);
     });
 
     it('session 2 Output B points at session 1 Output A (both sessions otherwise real and independent): typed failure', () => {
@@ -2733,7 +2714,15 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
     }
   });
 
-  it('item 2: session 2 has no selected Output A/B (same reused sceneId) - session 1 real pair never leaks into session 2', () => {
+  it('item 2: session 2 has no selected Output A/B and no omission evidence (same reused sceneId): rejected outright', () => {
+    // Deficiency Closure §6/F4: session 2's real Output A/B were stripped
+    // with no matching `plan.omissions`/`plan.issues` entry - "do not treat
+    // absence as implicit omission" - so the omission-aware canonical order
+    // check for both Output A and Output B disagrees with what remains
+    // selected, and the whole plan is rejected before any content is built.
+    // This is strictly stronger than the old "succeeds but session 2 carries
+    // no leaked content" result, and still proves session 1's real pair is
+    // never borrowed for session 2, since nothing is emitted at all.
     const { plan, secondSessionId } = sameSceneIdTwoSessionPlan();
     const stripped = {
       ...plan,
@@ -2744,20 +2733,10 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
       },
     };
     const result = packageExport(packageInputFor({ ok: true, value: stripped }));
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const session02Kinds = result.entries
-      .filter((entry) => entry.path.includes('/session-02/'))
-      .map((entry) => entry.kind);
-    expect(session02Kinds).not.toContain('prompt_a');
-    expect(session02Kinds).not.toContain('prompt_b');
-    expect(session02Kinds).not.toContain('prompt_pair');
-    const session01Kinds = result.entries
-      .filter((entry) => entry.path.includes('/session-01/'))
-      .map((entry) => entry.kind);
-    expect(session01Kinds).toContain('prompt_a');
-    expect(session01Kinds).toContain('prompt_b');
-    expect(session01Kinds).toContain('prompt_pair');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
   });
 
   it('item 3: session 2 Output B points at session 1 Output A (same reused sceneId): typed failure', () => {
@@ -2807,12 +2786,12 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
     expect('zipBytes' in result).toBe(false);
   });
 
-  it('item 5: reversing selected Output A/B array order produces an identical, successful per-scene result (same reused sceneId)', () => {
-    // Consolidated Final Corrective §8.2: `plan.numbering` is left
-    // untouched here - its order is now a canonical sequence that must
-    // equal `plan.scope.outputAIds` exactly, not an arbitrary insertion
-    // order - so only the selected-output arrays (grouped by identity, not
-    // sequence-compared) are reversed to prove genuine order-independence.
+  it('item 5: reversing selected Output A/B array order is rejected (same reused sceneId)', () => {
+    // Deficiency Closure §7/§8: reversing `selection.outputsA`/`outputsB`
+    // now disagrees with the canonical ordered subsequence of
+    // `scope.outputAIds`/`outputBIds`, so this reused-sceneId variant of the
+    // "selected A/B array reversed" mandatory rejection case must fail
+    // exactly like the single-sceneId case above.
     const { plan } = sameSceneIdTwoSessionPlan();
     const forward = packageExport(packageInputFor({ ok: true, value: plan }));
     const reversedPlan = {
@@ -2825,20 +2804,9 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
     };
     const reversed = packageExport(packageInputFor({ ok: true, value: reversedPlan }));
     expect(forward.ok).toBe(true);
-    expect(reversed.ok).toBe(true);
-    if (!forward.ok || !reversed.ok) return;
-    // As in the Fourth Corrective's equivalent test: whole-project aggregate
-    // files (readme/manifest/checksums) legitimately document sessions in
-    // array-traversal order, so only path/kind/byteLength are compared for
-    // those; every other, single-identity-scoped file must be byte-for-byte
-    // identical regardless of array insertion order.
-    const AGGREGATE_KINDS = new Set(['readme', 'manifest', 'checksums']);
-    const normalize = (entry: (typeof forward.entries)[number]) =>
-      AGGREGATE_KINDS.has(entry.kind)
-        ? { path: entry.path, kind: entry.kind, byteLength: entry.byteLength }
-        : entry;
-    const sortByPath = (entries: typeof forward.entries) =>
-      [...entries].map(normalize).sort((a, b) => (a.path < b.path ? -1 : 1));
-    expect(sortByPath(reversed.entries)).toEqual(sortByPath(forward.entries));
+    expect(reversed.ok).toBe(false);
+    if (reversed.ok) return;
+    expect(reversed.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in reversed).toBe(false);
   });
 });

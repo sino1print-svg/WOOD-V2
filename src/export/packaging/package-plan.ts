@@ -6,8 +6,21 @@
  * are built afterwards from this output). Naming, slugging, path safety, and
  * collision suffixing are applied here, once, in artifact order.
  */
-import { ExportFormat, type ValidationFailure } from '../../shared/domain-model';
-import type { ExportPlan } from '../../shared/contracts/export-planning';
+import {
+  ExportFormat,
+  type GroupId,
+  type SceneId,
+  type SessionId,
+  type ValidationFailure,
+} from '../../shared/domain-model';
+import type {
+  ExportGroupNumberingEntry,
+  ExportNumberingEntry,
+  ExportPlan,
+  ExportSelectedGroup,
+  ExportSelectedOutputA,
+  ExportSelectedOutputB,
+} from '../../shared/contracts/export-planning';
 import type {
   ExportArtifactKind,
   ExportFileFormat,
@@ -77,34 +90,58 @@ function outputSlugMap(plan: ExportPlan): Map<string, string> {
   return map;
 }
 
+/** Scopes whose content policy may legitimately select both a scene's Output A and Output B together, so a matching pair-execution file is expected. */
 const PAIR_FILE_ELIGIBLE_SCOPES = new Set(['pair', 'group', 'session', 'complete_project', 'all']);
-/** Scopes whose content policy never selects an Output A artifact for a scene that has a selected Output B - a real relationship still exists (via `sourceOutputAId`/numbering) but no A file is expected. */
-const B_ONLY_SCOPES = new Set(['output_b', 'group_b']);
 
-type OutputARecord = ExportPlan['selection']['outputsA'][number];
-type OutputBRecord = ExportPlan['selection']['outputsB'][number];
 type NumberingRecord = ExportPlan['numbering'][number];
 
-// Unit separator (0x1F) - never appears in a real SessionId/SceneId - used
-// only to prevent an accidental cross-identity collision when concatenating.
-const IDENTITY_KEY_SEPARATOR = String.fromCharCode(0x1f);
-
-/** `(sessionId, sceneId)` composite identity key - scene ids are only unique within a session (EX §12 Third Corrective F2). */
-function identityKey(sessionId: string, sceneId: string): string {
-  return sessionId + IDENTITY_KEY_SEPARATOR + sceneId;
+/**
+ * Consolidated Final Deficiency Closure §7: every selected Output A whose
+ * own `sourceOutputAId` an in-scope, pair-bearing Output B must reference,
+ * exactly as recorded by `numberingBySessionAndScene`.
+ *
+ * Frozen typed index (§3) handed to `buildPackageContentEntries` and to the
+ * pair-file eligibility rule - genuine nested `Map`s, keyed by the complete
+ * `(sessionId, sceneId)`/`(sessionId, groupId)` identity, never a
+ * string-concatenated composite key ("no separator character may be assumed
+ * impossible inside an id" - Deficiency Closure §3). Consuming these maps
+ * after validation means no downstream step ever re-resolves identity or
+ * cardinality by re-scanning the raw, untrusted plan arrays.
+ */
+export interface ValidatedPackagePlanIndex {
+  readonly numberingBySessionAndScene: ReadonlyMap<
+    SessionId,
+    ReadonlyMap<SceneId, ExportNumberingEntry>
+  >;
+  readonly outputABySessionAndScene: ReadonlyMap<
+    SessionId,
+    ReadonlyMap<SceneId, ExportSelectedOutputA>
+  >;
+  readonly outputBBySessionAndScene: ReadonlyMap<
+    SessionId,
+    ReadonlyMap<SceneId, ExportSelectedOutputB>
+  >;
+  readonly groupsBySessionAndId: ReadonlyMap<SessionId, ReadonlyMap<GroupId, ExportSelectedGroup>>;
+  readonly groupNumberingBySessionAndGroup: ReadonlyMap<
+    SessionId,
+    ReadonlyMap<GroupId, readonly ExportGroupNumberingEntry[]>
+  >;
 }
 
-function groupByIdentity<T extends { readonly sessionId: string; readonly sceneId: string }>(
-  items: readonly T[],
-): Map<string, T[]> {
-  const map = new Map<string, T[]>();
-  for (const item of items) {
-    const key = identityKey(item.sessionId, item.sceneId);
-    const list = map.get(key);
-    if (list) list.push(item);
-    else map.set(key, [item]);
-  }
-  return map;
+export type PackagePlanValidationResult =
+  | { readonly ok: true; readonly value: ValidatedPackagePlanIndex }
+  | { readonly ok: false; readonly failures: readonly ValidationFailure[] };
+
+function scopeFailure(field: string): PackagePlanValidationResult {
+  return { ok: false, failures: [registeredExportFailure('EXPORT_SCOPE_001', field)!] };
+}
+
+function linkFailure(field: string): PackagePlanValidationResult {
+  return { ok: false, failures: [registeredExportFailure('EXPORT_LINK_001', field)!] };
+}
+
+function groupFailure(field: string): PackagePlanValidationResult {
+  return { ok: false, failures: [registeredExportFailure('EXPORT_GROUP_001', field)!] };
 }
 
 /**
@@ -112,17 +149,12 @@ function groupByIdentity<T extends { readonly sessionId: string; readonly sceneI
  * for which artifact *categories* may be selected at all - `output_b` and
  * `group_b` must never carry a selected Output A, `cover` must never carry
  * selected Output A/B prompts, `execution_plan` must never carry prompt
- * artifacts, and so on. `hasRelationalIntegrityViolation` below proves
- * selected artifacts are *mutually consistent*, but a single internally
- * consistent Output A (e.g. the scene's own genuine Output A record,
- * injected into `selection.outputsA` even though `policy.outputA` is
- * `false`) satisfies every relational check and previously slipped through.
- * The real planner (`selection.ts`) always respects these flags - a
- * genuine `createExportPlan(...)` result can never trip this check - so
- * this exists purely to fail closed on a shape-valid but policy-violating
- * (hostile) plan. `products`/`seasons`/`colors` are intentionally excluded:
- * they are supporting descriptors selected under a separate, already
- * allowlisted rule, not a `policy`-gated category.
+ * artifacts, and so on. The real planner (`selection.ts`) always respects
+ * these flags - a genuine `createExportPlan(...)` result can never trip this
+ * check - so this exists purely to fail closed on a shape-valid but
+ * policy-violating (hostile) plan. `products`/`seasons`/`colors` are
+ * intentionally excluded: they are supporting descriptors selected under a
+ * separate, already allowlisted rule, not a `policy`-gated category.
  */
 export function hasScopePolicyViolation(plan: ExportPlan): boolean {
   const policy = plan.scope.policy;
@@ -152,13 +184,8 @@ function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * Consolidated Final Corrective §7: the resolved scope's own
- * identity-allowlist arrays must themselves be internally consistent.
- * `hasRelationalIntegrityViolation`'s scope-membership checks use `Set`s,
- * which silently discard duplicate evidence; content construction
- * (`buildPackageContentEntries`) iterates `plan.scope.sessionIds` directly,
- * so a duplicated session id there re-emits the same real session's
- * content twice under two different ordinal folders. A genuine
- * `resolveExportScope(...)` result never contains a duplicate in
+ * identity-allowlist arrays must themselves be internally consistent. A
+ * genuine `resolveExportScope(...)` result never contains a duplicate in
  * `sessionIds`/`groupIds`/`outputAIds`/`outputBIds`/`coverIds`/`versionIds`.
  *
  * `sceneIds` cannot use a plain global `Set` check: a `SceneId` is only
@@ -176,6 +203,14 @@ function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
  *   `scope.sceneIds` exactly - so a repeated string is only accepted when
  *   it is genuinely backed by two distinct sessions, and any extra,
  *   missing, or reordered occurrence fails.
+ *
+ * Kept as its own boolean-returning, independently unit-tested export
+ * (unchanged core logic - the audit found only the *orchestrator's* field
+ * reporting too coarse, never this function's own correctness); the
+ * deficiency-closure precise-field version lives in `validateScopeArrays`
+ * below, which reuses this same duplicate-detection rule but also reports
+ * exactly which array failed and returns the canonical session/scene
+ * identity map the numbering stage needs.
  */
 export function hasDuplicateScopeIdentifiers(plan: ExportPlan): boolean {
   const hasDuplicates = (ids: readonly string[]): boolean => new Set(ids).size !== ids.length;
@@ -200,34 +235,117 @@ export function hasDuplicateScopeIdentifiers(plan: ExportPlan): boolean {
   return !arraysEqual(flattenedSceneIds, plan.scope.sceneIds);
 }
 
+type ScopeArrayResult =
+  | { readonly ok: true; readonly allowedScenesBySession: Map<SessionId, Set<SceneId>> }
+  | { readonly ok: false; readonly field: string };
+
 /**
- * Consolidated Final Corrective §8.2/§8.3: `plan.numbering` must be the
- * *exact* canonical sequence the resolver itself would produce - not merely
- * mutually consistent with whatever is selected. Both `plan.numbering` and
- * `plan.scope.outputAIds`/`outputBIds` are built by the real planner via the
- * identical canonical session/scene traversal (`buildExportNumbering` /
- * `collectEntityIds`, both skipping a scene exactly when it lacks the
- * relevant output), so for a genuine plan:
- *
- * ```
- * plan.numbering.map(row => row.outputAId) === plan.scope.outputAIds
- * ```
- *
- * by length, value, and index - never sorted, never deduplicated. This one
- * exact-sequence comparison closes several previously separate gaps at
- * once: an extra/missing/duplicated numbering row (length disagrees), a
- * reordered sequence (index disagrees), and a fully bijective A-id exchange
- * between two identities while `scope.outputAIds` itself stays untouched
- * (value-at-index disagrees, even though the *set* of ids is unchanged and
- * every field is internally self-consistent). The equivalent B-sequence
- * check applies to every scope except `output_a`, whose approved planner
- * may legitimately retain a scene's real B id in `numbering.outputBId` even
- * though `output_a` deliberately resolves `scope.outputBIds` empty and
- * selects no B artifact (EX §12, output_a exception).
+ * Deficiency Closure §4/§5: the precise per-array counterpart of
+ * `hasDuplicateScopeIdentifiers` above - identical duplicate-detection rule,
+ * but reports exactly which scope array failed (never one generic
+ * `packaging.scope` field), and builds the canonical
+ * `Map<SessionId, Set<SceneId>>` of every scene id genuinely valid for its
+ * exact session - the "allowed identity" map §5 requires be built *before*
+ * numbering validation runs, so a numbering row naming a real, in-scope
+ * session but a fabricated (or cross-session) scene id is rejected on its
+ * own, independently of whether the row's `outputAId`/`outputBId` sequence
+ * happens to still agree with `scope.outputAIds`/`outputBIds`.
  */
-function hasNumberingCanonicalOrderViolation(plan: ExportPlan): boolean {
+function validateScopeArrays(plan: ExportPlan): ScopeArrayResult {
+  const hasDuplicates = (ids: readonly string[]): boolean => new Set(ids).size !== ids.length;
+
+  if (hasDuplicates(plan.scope.sessionIds))
+    return { ok: false, field: 'packaging.scope.sessionIds' };
+  if (hasDuplicates(plan.scope.groupIds)) return { ok: false, field: 'packaging.scope.groupIds' };
+
+  const allowedScenesBySession = new Map<SessionId, Set<SceneId>>();
+  if (plan.scope.sessionIds.length <= 1) {
+    if (hasDuplicates(plan.scope.sceneIds)) return { ok: false, field: 'packaging.scope.sceneIds' };
+    const onlySessionId = plan.scope.sessionIds[0];
+    if (onlySessionId !== undefined) {
+      allowedScenesBySession.set(onlySessionId, new Set(plan.scope.sceneIds));
+    }
+  } else {
+    const selectedSessionIds = plan.selection.sessions.map((session) => session.id);
+    if (!arraysEqual(selectedSessionIds, plan.scope.sessionIds)) {
+      return { ok: false, field: 'packaging.scope.sceneIds' };
+    }
+    const flattenedSceneIds = plan.selection.sessions.flatMap((session) => session.sceneIds);
+    if (!arraysEqual(flattenedSceneIds, plan.scope.sceneIds)) {
+      return { ok: false, field: 'packaging.scope.sceneIds' };
+    }
+    for (const session of plan.selection.sessions) {
+      allowedScenesBySession.set(session.id, new Set(session.sceneIds));
+    }
+  }
+
+  if (hasDuplicates(plan.scope.outputAIds))
+    return { ok: false, field: 'packaging.scope.outputAIds' };
+  if (hasDuplicates(plan.scope.outputBIds))
+    return { ok: false, field: 'packaging.scope.outputBIds' };
+  if (hasDuplicates(plan.scope.coverIds)) return { ok: false, field: 'packaging.scope.coverIds' };
+  if (hasDuplicates(plan.scope.versionIds))
+    return { ok: false, field: 'packaging.scope.versionIds' };
+
+  return { ok: true, allowedScenesBySession };
+}
+
+type NumberingIndexResult =
+  | {
+      readonly ok: true;
+      readonly numberingBySessionAndScene: Map<SessionId, Map<SceneId, ExportNumberingEntry>>;
+    }
+  | { readonly ok: false };
+
+/**
+ * Deficiency Closure §5/F3: every numbering row must belong to a real,
+ * in-scope session (from `allowedScenesBySession`) *and* to a scene genuinely
+ * valid for that exact session - checked independently of the canonical A/B
+ * id-sequence comparison below, so a row naming a fabricated scene, or
+ * reusing another row's `(sessionId, sceneId)` identity, is rejected even
+ * when the dependent selected artifacts for that row have been stripped and
+ * the id sequence otherwise still lines up with `scope.outputAIds`
+ * (Independent Audit F3 - both reproductions relied on exactly this gap).
+ *
+ * Canonical order (§8.2/§8.3, unchanged from the Consolidated Final
+ * Corrective): `plan.numbering` must be the *exact* sequence the resolver
+ * itself would produce, not merely mutually consistent with whatever is
+ * selected - `plan.numbering.map(row => row.outputAId)` must equal
+ * `plan.scope.outputAIds` by length, value, and index; the equivalent
+ * B-sequence check applies to every scope except `output_a`, whose approved
+ * planner may legitimately retain a scene's real B id in
+ * `numbering.outputBId` even though `output_a` deliberately resolves
+ * `scope.outputBIds` empty and selects no B artifact (EX §12).
+ */
+function validateNumbering(
+  plan: ExportPlan,
+  allowedScenesBySession: ReadonlyMap<SessionId, ReadonlySet<SceneId>>,
+): NumberingIndexResult {
+  const numberingBySessionAndScene = new Map<SessionId, Map<SceneId, ExportNumberingEntry>>();
+
+  for (const entry of plan.numbering) {
+    const allowedScenes = allowedScenesBySession.get(entry.sessionId);
+    if (allowedScenes === undefined || !allowedScenes.has(entry.sceneId)) return { ok: false };
+
+    let bySceneId = numberingBySessionAndScene.get(entry.sessionId);
+    if (!bySceneId) {
+      bySceneId = new Map<SceneId, ExportNumberingEntry>();
+      numberingBySessionAndScene.set(entry.sessionId, bySceneId);
+    }
+    if (bySceneId.has(entry.sceneId)) return { ok: false };
+
+    if (!Number.isInteger(entry.sceneNumber) || entry.sceneNumber <= 0) return { ok: false };
+    if (entry.outputALabel !== `${entry.sceneNumber}A`) return { ok: false };
+    const hasB = entry.outputBId !== undefined;
+    const hasBLabel = entry.outputBLabel !== undefined;
+    if (hasB !== hasBLabel) return { ok: false };
+    if (hasB && entry.outputBLabel !== `${entry.sceneNumber}B`) return { ok: false };
+
+    bySceneId.set(entry.sceneId, entry);
+  }
+
   const outputAIds = plan.numbering.map((entry) => entry.outputAId);
-  if (!arraysEqual(outputAIds, plan.scope.outputAIds)) return true;
+  if (!arraysEqual(outputAIds, plan.scope.outputAIds)) return { ok: false };
 
   if (plan.scope.scopeDetail !== 'output_a') {
     const outputBIds = plan.numbering
@@ -236,304 +354,411 @@ function hasNumberingCanonicalOrderViolation(plan: ExportPlan): boolean {
           entry.outputBId !== undefined,
       )
       .map((entry) => entry.outputBId);
-    if (!arraysEqual(outputBIds, plan.scope.outputBIds)) return true;
+    if (!arraysEqual(outputBIds, plan.scope.outputBIds)) return { ok: false };
   }
-  return false;
+
+  return { ok: true, numberingBySessionAndScene };
+}
+
+type GroupNumberingIndexResult =
+  | {
+      readonly ok: true;
+      readonly groupsBySessionAndId: Map<SessionId, Map<GroupId, ExportSelectedGroup>>;
+      readonly groupNumberingBySessionAndGroup: Map<
+        SessionId,
+        Map<GroupId, ExportGroupNumberingEntry[]>
+      >;
+    }
+  | { readonly ok: false };
+
+function groupNumberingRowsEqual(
+  a: ExportGroupNumberingEntry,
+  b: ExportGroupNumberingEntry,
+): boolean {
+  return (
+    a.sessionId === b.sessionId &&
+    a.groupId === b.groupId &&
+    a.groupNumber === b.groupNumber &&
+    a.groupSceneNumber === b.groupSceneNumber &&
+    a.sceneId === b.sceneId &&
+    a.sceneNumber === b.sceneNumber &&
+    a.outputAId === b.outputAId &&
+    a.outputALabel === b.outputALabel &&
+    a.outputBId === b.outputBId &&
+    a.outputBLabel === b.outputBLabel
+  );
 }
 
 /**
- * Consolidated Final Corrective §8.1: every numbering row's own fields must
- * be internally well-formed, and every row must belong to the resolved
- * scope. Duplicate-identity and cross-session-leakage protection is
- * already implied by `hasNumberingCanonicalOrderViolation` (a duplicate or
- * out-of-scope row changes the exact canonical sequence), so this only
- * checks what that sequence comparison cannot see on its own: label/
- * sceneNumber format, and the `outputBId`/`outputBLabel` pairing.
+ * Deficiency Closure §9/F7: a `groupNumbering` row's own fields must never
+ * be checked only against *themselves* - the Independent Audit proved a
+ * hostile `groupNumber`, a hostile `groupSceneNumber`, and a full physical
+ * row reversal all pass a self-consistency check (labels updated to agree
+ * with whatever hostile ordinal was chosen) while still reading as
+ * `{ok:true}`. Whenever authoritative group metadata is actually selected
+ * (`policy.groupMetadata`), derive the *entire expected ordered row
+ * sequence* independently, from each selected group's own authoritative
+ * `groupNumber` and its exact `sceneIds` order (never from
+ * `plan.groupNumbering` itself), and require the full sequence to match
+ * exactly - length, every field, and position. "Count equality alone is
+ * insufficient" (§9): a physical reversal of two otherwise-valid rows has
+ * the same count and the same per-row self-consistency, but disagrees with
+ * the derived sequence at both positions.
+ *
+ * A resolved scope's `groupIds`/`groupNumbering` are computed structurally
+ * (EX §12), independent of `policy.groupMetadata` - `execution_plan` scope
+ * is the one case where real, non-empty `groupNumbering` rows exist (the
+ * README documents them) while `policy.groupMetadata` is false and
+ * `selection.groups` is therefore empty by design. There is no authoritative
+ * source to derive an expected sequence from in that case, so this falls
+ * back to per-row scope-membership, duplicate-identity, and numbering-
+ * linkage/self-consistency checks - the same defense-in-depth the
+ * pre-deficiency-closure validator always ran unconditionally.
  */
-function hasNumberingFieldViolation(plan: ExportPlan): boolean {
-  const sessionIdSet = new Set<string>(plan.scope.sessionIds);
-  for (const entry of plan.numbering) {
-    if (!sessionIdSet.has(entry.sessionId)) return true;
-    if (!Number.isInteger(entry.sceneNumber) || entry.sceneNumber <= 0) return true;
-    if (entry.outputALabel !== `${entry.sceneNumber}A`) return true;
-    const hasB = entry.outputBId !== undefined;
-    const hasBLabel = entry.outputBLabel !== undefined;
-    if (hasB !== hasBLabel) return true;
-    if (hasB && entry.outputBLabel !== `${entry.sceneNumber}B`) return true;
-  }
-  return false;
-}
-
-/**
- * Consolidated Final Corrective §11: every `groupNumbering` row must
- * reconcile with the resolved scope, with its own `(sessionId, sceneId)`
- * numbering row, and - when group metadata is selected - exactly with the
- * selected group's own membership. Identity is
- * `(sessionId, groupId, sceneId)`; no duplicate identity, no row outside
- * `scope.sessionIds`/`scope.groupIds`, no row for a scene outside its own
- * selected group's `sceneIds`, and exact field/label agreement with the
- * matching numbering row.
- */
-function hasGroupNumberingViolation(plan: ExportPlan): boolean {
-  const sessionIdSet = new Set<string>(plan.scope.sessionIds);
-  const groupIdSet = new Set<string>(plan.scope.groupIds);
-  const numberingByIdentity = groupByIdentity<NumberingRecord>(plan.numbering);
-  const seenIdentities = new Set<string>();
-
-  for (const row of plan.groupNumbering) {
-    const identity =
-      row.sessionId + IDENTITY_KEY_SEPARATOR + row.groupId + IDENTITY_KEY_SEPARATOR + row.sceneId;
-    if (seenIdentities.has(identity)) return true;
-    seenIdentities.add(identity);
-
-    if (!sessionIdSet.has(row.sessionId)) return true;
-    if (!groupIdSet.has(row.groupId)) return true;
-
-    const numberingList = numberingByIdentity.get(identityKey(row.sessionId, row.sceneId)) ?? [];
-    if (numberingList.length !== 1) return true;
-    const numberingEntry = numberingList[0]!;
-    if (row.sceneNumber !== numberingEntry.sceneNumber) return true;
-    if (row.outputAId !== numberingEntry.outputAId) return true;
-    const rowHasB = row.outputBId !== undefined;
-    const numberingHasB = numberingEntry.outputBId !== undefined;
-    if (rowHasB !== numberingHasB) return true;
-    if (rowHasB && row.outputBId !== numberingEntry.outputBId) return true;
-
-    if (!Number.isInteger(row.groupNumber) || row.groupNumber <= 0) return true;
-    if (!Number.isInteger(row.groupSceneNumber) || row.groupSceneNumber <= 0) return true;
-    if (row.outputALabel !== `${row.groupNumber}.${row.groupSceneNumber}-A`) return true;
-    const rowHasBLabel = row.outputBLabel !== undefined;
-    if (rowHasB !== rowHasBLabel) return true;
-    if (rowHasB && row.outputBLabel !== `${row.groupNumber}.${row.groupSceneNumber}-B`) return true;
-
-    const selectedGroup = plan.selection.groups.find(
-      (group) => group.id === row.groupId && group.sessionId === row.sessionId,
-    );
-    if (selectedGroup !== undefined && !selectedGroup.sceneIds.includes(row.sceneId)) return true;
+function validateGroupNumbering(
+  plan: ExportPlan,
+  sessionIdSet: ReadonlySet<SessionId>,
+  groupIdSet: ReadonlySet<GroupId>,
+  numberingBySessionAndScene: ReadonlyMap<SessionId, ReadonlyMap<SceneId, ExportNumberingEntry>>,
+): GroupNumberingIndexResult {
+  const groupsBySessionAndId = new Map<SessionId, Map<GroupId, ExportSelectedGroup>>();
+  for (const group of plan.selection.groups) {
+    if (!sessionIdSet.has(group.sessionId) || !groupIdSet.has(group.id)) return { ok: false };
+    let bySessionGroup = groupsBySessionAndId.get(group.sessionId);
+    if (!bySessionGroup) {
+      bySessionGroup = new Map<GroupId, ExportSelectedGroup>();
+      groupsBySessionAndId.set(group.sessionId, bySessionGroup);
+    }
+    if (bySessionGroup.has(group.id)) return { ok: false };
+    bySessionGroup.set(group.id, group);
   }
 
   if (plan.scope.policy.groupMetadata) {
-    for (const group of plan.selection.groups) {
-      const expectedCount = group.sceneIds.filter((sceneId) => {
-        const list = numberingByIdentity.get(identityKey(group.sessionId, sceneId)) ?? [];
-        return list.length === 1;
-      }).length;
-      const actualCount = plan.groupNumbering.filter(
-        (row) => row.sessionId === group.sessionId && row.groupId === group.id,
-      ).length;
-      if (actualCount !== expectedCount) return true;
+    const expectedRows: ExportGroupNumberingEntry[] = [];
+    for (const bySessionGroup of groupsBySessionAndId.values()) {
+      for (const group of bySessionGroup.values()) {
+        let groupSceneNumber = 0;
+        for (const sceneId of group.sceneIds) {
+          const numberingEntry = numberingBySessionAndScene.get(group.sessionId)?.get(sceneId);
+          if (numberingEntry === undefined) continue;
+          groupSceneNumber += 1;
+          expectedRows.push({
+            sessionId: group.sessionId,
+            groupId: group.id,
+            groupNumber: group.groupNumber,
+            groupSceneNumber,
+            sceneId,
+            sceneNumber: numberingEntry.sceneNumber,
+            outputAId: numberingEntry.outputAId,
+            outputALabel: `${group.groupNumber}.${groupSceneNumber}-A`,
+            ...(numberingEntry.outputBId !== undefined
+              ? {
+                  outputBId: numberingEntry.outputBId,
+                  outputBLabel: `${group.groupNumber}.${groupSceneNumber}-B`,
+                }
+              : {}),
+          });
+        }
+      }
+    }
+
+    if (plan.groupNumbering.length !== expectedRows.length) return { ok: false };
+    for (let index = 0; index < expectedRows.length; index += 1) {
+      if (!groupNumberingRowsEqual(plan.groupNumbering[index]!, expectedRows[index]!)) {
+        return { ok: false };
+      }
+    }
+  } else {
+    const seenScenesByGroup = new Map<SessionId, Map<GroupId, Set<SceneId>>>();
+    for (const row of plan.groupNumbering) {
+      if (!sessionIdSet.has(row.sessionId) || !groupIdSet.has(row.groupId)) return { ok: false };
+
+      let byGroup = seenScenesByGroup.get(row.sessionId);
+      if (!byGroup) {
+        byGroup = new Map<GroupId, Set<SceneId>>();
+        seenScenesByGroup.set(row.sessionId, byGroup);
+      }
+      let scenes = byGroup.get(row.groupId);
+      if (!scenes) {
+        scenes = new Set<SceneId>();
+        byGroup.set(row.groupId, scenes);
+      }
+      if (scenes.has(row.sceneId)) return { ok: false };
+      scenes.add(row.sceneId);
+
+      const numberingEntry = numberingBySessionAndScene.get(row.sessionId)?.get(row.sceneId);
+      if (numberingEntry === undefined) return { ok: false };
+      if (row.sceneNumber !== numberingEntry.sceneNumber) return { ok: false };
+      if (row.outputAId !== numberingEntry.outputAId) return { ok: false };
+      const rowHasB = row.outputBId !== undefined;
+      const numberingHasB = numberingEntry.outputBId !== undefined;
+      if (rowHasB !== numberingHasB) return { ok: false };
+      if (rowHasB && row.outputBId !== numberingEntry.outputBId) return { ok: false };
+
+      if (!Number.isInteger(row.groupNumber) || row.groupNumber <= 0) return { ok: false };
+      if (!Number.isInteger(row.groupSceneNumber) || row.groupSceneNumber <= 0)
+        return { ok: false };
+      if (row.outputALabel !== `${row.groupNumber}.${row.groupSceneNumber}-A`) return { ok: false };
+      const rowHasBLabel = row.outputBLabel !== undefined;
+      if (rowHasB !== rowHasBLabel) return { ok: false };
+      if (rowHasB && row.outputBLabel !== `${row.groupNumber}.${row.groupSceneNumber}-B`) {
+        return { ok: false };
+      }
     }
   }
 
-  return false;
+  const groupNumberingBySessionAndGroup = new Map<
+    SessionId,
+    Map<GroupId, ExportGroupNumberingEntry[]>
+  >();
+  for (const row of plan.groupNumbering) {
+    let bySessionGroup = groupNumberingBySessionAndGroup.get(row.sessionId);
+    if (!bySessionGroup) {
+      bySessionGroup = new Map<GroupId, ExportGroupNumberingEntry[]>();
+      groupNumberingBySessionAndGroup.set(row.sessionId, bySessionGroup);
+    }
+    let rows = bySessionGroup.get(row.groupId);
+    if (!rows) {
+      rows = [];
+      bySessionGroup.set(row.groupId, rows);
+    }
+    rows.push(row);
+  }
+
+  return { ok: true, groupsBySessionAndId, groupNumberingBySessionAndGroup };
 }
 
-/**
- * Fourth Corrective C1/C2: exact-cardinality, scope-aware relational
- * validation over `plan.selection.outputsA`/`outputsB`/`plan.numbering`,
- * replacing the prior first-match `.find()`-based checks (Third Corrective
- * F1/F2), which silently accepted a selected Output B moved to another
- * session/scene, a B with no matching A, duplicate selected A/B records, and
- * a valid numbering row followed by a hostile duplicate (order-dependently).
- *
- * Every identity below is grouped by the complete `(sessionId, sceneId)` key
- * before any comparison runs, so cardinality violations (more than one
- * selected A, B, or numbering row for one identity) are counted rather than
- * masked by whichever row a `.find()` happened to hit first - the result is
- * independent of array order (a valid row followed by a hostile duplicate
- * fails exactly the same way as the same two rows reversed).
- *
- * Scope-aware rules:
- * - Pair-bearing scopes (`pair`, `group`, `session`, `complete_project`,
- *   `all`): every selected Output B requires exactly one selected Output A
- *   for the same identity, exactly one numbering row, and full ID agreement
- *   among B.sourceOutputAId / A.id / numbering.outputAId / numbering.outputBId.
- * - B-only scopes (`output_b`, `group_b`): the Output A artifact is
- *   legitimately never selected, so it is not required to exist - but the
- *   selected B must still have exactly one numbering row whose
- *   outputAId/outputBId agree with B.sourceOutputAId/B.id.
- * - Every selected Output A (any scope) requires exactly one numbering row
- *   whose outputAId agrees with it - this is the A-only-scope rule
- *   (`output_a`/`group_a`) but is safe to apply universally since it is
- *   already implied for pair-bearing identities above.
- * - Every selected Output A/B must belong to `plan.scope.sessionIds`, and -
- *   when `plan.scope.sceneIds` is non-empty - to `plan.scope.sceneIds`.
- */
-export function hasRelationalIntegrityViolation(plan: ExportPlan): boolean {
-  const sessionIdSet = new Set<string>(plan.scope.sessionIds);
-  const sceneIdSet = new Set<string>(plan.scope.sceneIds);
-  const sceneScopeIsBounded = plan.scope.sceneIds.length > 0;
-  // The resolved scope's own flat ID allowlists - computed once by
-  // `resolveExportScope` directly from the source project, never touched by
-  // `selection`/`numbering` construction - anchor every selected/referenced
-  // output id to a real, in-scope entity. A jointly-forged id that only
-  // agrees with its own numbering counterpart, never with the resolved
-  // scope's ground truth, is rejected here; a *bijective* exchange of two
-  // real ids between two identities is additionally impossible to reach
-  // this function at all, because `hasDuplicateScopeIdentifiers` (no
-  // duplicate real id in `scope.outputAIds`/`outputBIds`) combined with
-  // `hasNumberingCanonicalOrderViolation` (the numbering sequence must
-  // equal those same duplicate-free arrays exactly, index for index) - both
-  // run earlier in `validatePackagePlanIntegrity`'s fixed precedence - only
-  // let a plan reach here once every numbering row's `outputAId`/`outputBId`
-  // is already provably unique and provably a real, in-scope id at its own
-  // identity's exact canonical position.
-  const outputAIdSet = new Set<string>(plan.scope.outputAIds);
-  const outputBIdSet = new Set<string>(plan.scope.outputBIds);
+type OutputAIndexResult =
+  | {
+      readonly ok: true;
+      readonly outputABySessionAndScene: Map<SessionId, Map<SceneId, ExportSelectedOutputA>>;
+    }
+  | { readonly ok: false };
 
-  const outOfScope = (sessionId: string, sceneId: string): boolean =>
-    !sessionIdSet.has(sessionId) || (sceneScopeIsBounded && !sceneIdSet.has(sceneId));
+/**
+ * Deficiency Closure §7/F5: for every selected Output A, require exact
+ * agreement with its own numbering row's `outputAId`, `sceneNumber`, and
+ * `outputALabel` - not merely the id (the Independent Audit reproduced a
+ * selected A relabeled to a different scene number/label entirely, with no
+ * other field disagreeing, previously accepted). Enforce exact
+ * one-per-identity and one-identity-per-id.
+ *
+ * Enforce canonical order (§7): `selection.outputsA.map(x => x.id)` must
+ * equal the ordered subsequence of `scope.outputAIds` that survives
+ * approved-omission filtering. `plan.numbering` is, by this point, already
+ * proven to equal `scope.outputAIds` exactly (the numbering stage above), so
+ * walking `plan.numbering` in order and dropping any identity with a
+ * matching `output_a` omission produces exactly that expected subsequence -
+ * this single order comparison also closes F4/§6 (a missing selected
+ * artifact with no omission evidence changes the expected sequence's length
+ * or values, and "do not treat absence as implicit omission" holds because
+ * omission status is read only from `plan.omissions`, never inferred from
+ * absence itself).
+ */
+function validateSelectedOutputA(
+  plan: ExportPlan,
+  numberingBySessionAndScene: ReadonlyMap<SessionId, ReadonlyMap<SceneId, ExportNumberingEntry>>,
+): OutputAIndexResult {
+  if (!plan.scope.policy.outputA) {
+    return { ok: true, outputABySessionAndScene: new Map() };
+  }
+
+  const outputAIdSet = new Set<string>(plan.scope.outputAIds);
+  const claimedIds = new Set<string>();
+  const outputABySessionAndScene = new Map<SessionId, Map<SceneId, ExportSelectedOutputA>>();
 
   for (const outputA of plan.selection.outputsA) {
-    if (outOfScope(outputA.sessionId, outputA.sceneId)) return true;
-  }
-  for (const outputB of plan.selection.outputsB) {
-    if (outOfScope(outputB.sessionId, outputB.sceneId)) return true;
-  }
+    if (!outputAIdSet.has(outputA.id) || claimedIds.has(outputA.id)) return { ok: false };
+    claimedIds.add(outputA.id);
 
-  const outputsAByIdentity = groupByIdentity<OutputARecord>(plan.selection.outputsA);
-  const outputsBByIdentity = groupByIdentity<OutputBRecord>(plan.selection.outputsB);
-  const numberingByIdentity = groupByIdentity<NumberingRecord>(plan.numbering);
-
-  for (const list of outputsAByIdentity.values()) {
-    if (list.length > 1) return true;
-  }
-  for (const list of outputsBByIdentity.values()) {
-    if (list.length > 1) return true;
-  }
-
-  const isPairBearing = PAIR_FILE_ELIGIBLE_SCOPES.has(plan.scope.scopeDetail);
-  const isBOnly = B_ONLY_SCOPES.has(plan.scope.scopeDetail);
-
-  for (const [key, bList] of outputsBByIdentity) {
-    const outputB = bList[0]!;
-    if (!outputBIdSet.has(outputB.id)) return true;
-    if (!outputAIdSet.has(outputB.sourceOutputAId)) return true;
-    const numberingList = numberingByIdentity.get(key) ?? [];
-    if (numberingList.length !== 1) return true;
-    const numberingEntry = numberingList[0]!;
-    if (numberingEntry.outputBId !== outputB.id) return true;
-    if (numberingEntry.outputAId !== outputB.sourceOutputAId) return true;
-
-    if (isPairBearing) {
-      const aList = outputsAByIdentity.get(key) ?? [];
-      if (aList.length !== 1) return true;
-      const outputA = aList[0]!;
-      if (outputB.sourceOutputAId !== outputA.id) return true;
-      if (numberingEntry.outputAId !== outputA.id) return true;
-    } else if (!isBOnly) {
-      // Any non-pair-bearing, non-B-only scope should never select an
-      // Output B at all under the current content-policy design; if one
-      // somehow appears, treat it as relationally unverifiable and fail
-      // closed rather than silently accept it.
-      return true;
+    let bySceneId = outputABySessionAndScene.get(outputA.sessionId);
+    if (!bySceneId) {
+      bySceneId = new Map<SceneId, ExportSelectedOutputA>();
+      outputABySessionAndScene.set(outputA.sessionId, bySceneId);
     }
+    if (bySceneId.has(outputA.sceneId)) return { ok: false };
+
+    const numberingEntry = numberingBySessionAndScene.get(outputA.sessionId)?.get(outputA.sceneId);
+    if (numberingEntry === undefined) return { ok: false };
+    if (numberingEntry.outputAId !== outputA.id) return { ok: false };
+    if (numberingEntry.sceneNumber !== outputA.sceneNumber) return { ok: false };
+    if (numberingEntry.outputALabel !== outputA.label) return { ok: false };
+
+    bySceneId.set(outputA.sceneId, outputA);
   }
 
-  for (const [key, aList] of outputsAByIdentity) {
-    const outputA = aList[0]!;
-    if (!outputAIdSet.has(outputA.id)) return true;
-    const numberingList = numberingByIdentity.get(key) ?? [];
-    if (numberingList.length !== 1) return true;
-    if (numberingList[0]!.outputAId !== outputA.id) return true;
+  const omittedOutputA = new Set(
+    plan.omissions
+      .filter((omission) => omission.artifactKind === 'output_a')
+      .map((omission) => omission.entityId),
+  );
+  const expectedOrder = plan.numbering
+    .filter((entry) => !omittedOutputA.has(`${entry.sceneId}:output_a`))
+    .map((entry) => entry.outputAId);
+  if (
+    !arraysEqual(
+      plan.selection.outputsA.map((outputA) => outputA.id),
+      expectedOrder,
+    )
+  ) {
+    return { ok: false };
   }
 
-  return false;
+  return { ok: true, outputABySessionAndScene };
 }
 
-export type PackagePlanValidationResult =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly failures: readonly ValidationFailure[] };
+type OutputBIndexResult =
+  | {
+      readonly ok: true;
+      readonly outputBBySessionAndScene: Map<SessionId, Map<SceneId, ExportSelectedOutputB>>;
+    }
+  | { readonly ok: false };
 
 /**
- * Consolidated Final Corrective §5/§5.1: one typed validation entry point,
- * called in the required deterministic precedence order, replacing a
- * growing sequence of independently-invoked boolean checks. Every check
- * above remains its own narrow, unit-testable function - reused here, not
- * duplicated - but `package.ts` now calls only this single function, in
- * this one fixed order, so the failure a hostile plan produces never
- * depends on which caller happened to check what first:
+ * Deficiency Closure §8/F6: mirrors `validateSelectedOutputA` for Output B -
+ * exact agreement with the numbering row's `outputBId`, `sourceOutputAId`,
+ * `sceneNumber`, `outputBLabel`, and `outputALabel` (as `sourceOutputALabel`)
+ * - plus canonical order via the same omission-aware numbering walk. Skipped
+ * entirely when `policy.outputB` is false (the frozen `output_a`/`group_a`
+ * exception - `selection.outputsB` is already forced empty by
+ * `hasScopePolicyViolation`, and `scope.outputBIds`/`numbering.outputBId` may
+ * still legitimately carry real, structurally-present ids that this scope
+ * never selects).
  *
- * 1. scope policy (`EXPORT_SCOPE_001` / `packaging.scope.policy`);
- * 2. scope identifier arrays (`EXPORT_SCOPE_001` / `packaging.scope`);
- * 3. numbering - canonical order and field exactness (`EXPORT_LINK_001` /
- *    `packaging.numbering`);
- * 4. group numbering (`EXPORT_GROUP_001` / `packaging.groupNumbering`);
- * 5. selected Output A / Output B linkage (`EXPORT_LINK_001` /
- *    `packaging.selection.outputsB`).
+ * When `policy.outputA` is also true (every pair-bearing scope), additionally
+ * require the paired selected Output A to actually exist and agree with the
+ * selected B's own `sourceOutputAId` - closing the same gap the pre-audit
+ * `hasRelationalIntegrityViolation` covered via its `isPairBearing` branch,
+ * now expressed against the already-validated Output A index instead of a
+ * second raw-array scan.
+ */
+function validateSelectedOutputB(
+  plan: ExportPlan,
+  numberingBySessionAndScene: ReadonlyMap<SessionId, ReadonlyMap<SceneId, ExportNumberingEntry>>,
+  outputABySessionAndScene: ReadonlyMap<SessionId, ReadonlyMap<SceneId, ExportSelectedOutputA>>,
+): OutputBIndexResult {
+  if (!plan.scope.policy.outputB) {
+    return { ok: true, outputBBySessionAndScene: new Map() };
+  }
+
+  const outputBIdSet = new Set<string>(plan.scope.outputBIds);
+  const claimedIds = new Set<string>();
+  const claimedSourceIds = new Set<string>();
+  const outputBBySessionAndScene = new Map<SessionId, Map<SceneId, ExportSelectedOutputB>>();
+  const requireOutputA = plan.scope.policy.outputA;
+
+  for (const outputB of plan.selection.outputsB) {
+    if (!outputBIdSet.has(outputB.id) || claimedIds.has(outputB.id)) return { ok: false };
+    if (claimedSourceIds.has(outputB.sourceOutputAId)) return { ok: false };
+    claimedIds.add(outputB.id);
+    claimedSourceIds.add(outputB.sourceOutputAId);
+
+    let bySceneId = outputBBySessionAndScene.get(outputB.sessionId);
+    if (!bySceneId) {
+      bySceneId = new Map<SceneId, ExportSelectedOutputB>();
+      outputBBySessionAndScene.set(outputB.sessionId, bySceneId);
+    }
+    if (bySceneId.has(outputB.sceneId)) return { ok: false };
+
+    const numberingEntry = numberingBySessionAndScene.get(outputB.sessionId)?.get(outputB.sceneId);
+    if (numberingEntry === undefined || numberingEntry.outputBId === undefined)
+      return { ok: false };
+    if (numberingEntry.outputBId !== outputB.id) return { ok: false };
+    if (numberingEntry.outputAId !== outputB.sourceOutputAId) return { ok: false };
+    if (numberingEntry.sceneNumber !== outputB.sceneNumber) return { ok: false };
+    if (numberingEntry.outputBLabel !== outputB.label) return { ok: false };
+    if (numberingEntry.outputALabel !== outputB.sourceOutputALabel) return { ok: false };
+
+    if (requireOutputA) {
+      const pairedOutputA = outputABySessionAndScene.get(outputB.sessionId)?.get(outputB.sceneId);
+      if (pairedOutputA === undefined || pairedOutputA.id !== outputB.sourceOutputAId) {
+        return { ok: false };
+      }
+    }
+
+    bySceneId.set(outputB.sceneId, outputB);
+  }
+
+  const omittedOutputB = new Set(
+    plan.omissions
+      .filter((omission) => omission.artifactKind === 'output_b')
+      .map((omission) => omission.entityId),
+  );
+  const expectedOrder = plan.numbering
+    .filter((entry): entry is NumberingRecord & { readonly outputBId: string } => {
+      if (entry.outputBId === undefined) return false;
+      return !omittedOutputB.has(entry.outputBId);
+    })
+    .map((entry) => entry.outputBId);
+  if (
+    !arraysEqual(
+      plan.selection.outputsB.map((outputB) => outputB.id),
+      expectedOrder,
+    )
+  ) {
+    return { ok: false };
+  }
+
+  return { ok: true, outputBBySessionAndScene };
+}
+
+/**
+ * Deficiency Closure §3/§4/§5: one typed validation entry point, called in
+ * the required deterministic precedence order - (1) scope policy, (2) scope
+ * identifier arrays with a precise per-array failure field, (3) numbering -
+ * identity, scene membership, canonical order, and field exactness, (4)
+ * group numbering exactness against authoritative group metadata, (5)
+ * selected Output A field/order reconciliation, (6) selected Output B
+ * field/order reconciliation - so the failure a hostile plan produces never
+ * depends on which check happened to run first, and an Output A problem is
+ * never reported under the Output B field (or vice versa).
+ *
+ * On success, returns the frozen `ValidatedPackagePlanIndex` - genuine
+ * nested `Map`s built once, during validation, and handed unchanged to
+ * `buildPackageContentEntries` - so content construction never re-derives
+ * identity or cardinality from the raw, already-validated plan arrays.
  */
 export function validatePackagePlanIntegrity(plan: ExportPlan): PackagePlanValidationResult {
   if (hasScopePolicyViolation(plan)) {
-    return {
-      ok: false,
-      failures: [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope.policy')!],
-    };
+    return scopeFailure('packaging.scope.policy');
   }
-  if (hasDuplicateScopeIdentifiers(plan)) {
-    return {
-      ok: false,
-      failures: [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope')!],
-    };
-  }
-  if (hasNumberingCanonicalOrderViolation(plan) || hasNumberingFieldViolation(plan)) {
-    return {
-      ok: false,
-      failures: [registeredExportFailure('EXPORT_LINK_001', 'packaging.numbering')!],
-    };
-  }
-  if (hasGroupNumberingViolation(plan)) {
-    return {
-      ok: false,
-      failures: [registeredExportFailure('EXPORT_GROUP_001', 'packaging.groupNumbering')!],
-    };
-  }
-  if (hasRelationalIntegrityViolation(plan)) {
-    return {
-      ok: false,
-      failures: [registeredExportFailure('EXPORT_LINK_001', 'packaging.selection.outputsB')!],
-    };
-  }
-  return { ok: true };
-}
 
-/**
- * Pair-execution files must never be inferred from `plan.numbering` alone -
- * numbering always carries a scene's real `outputBId` whenever the *source*
- * scene has an Output B, regardless of whether Output B is actually selected
- * for this scope (EX §12 First Corrective F2). `output_a`, `group_a`, `cover`,
- * and `execution_plan` scopes must never leak that relationship through a
- * pair file. Every pair-file-eligible scope - including `pair` itself - may
- * only emit one where Output A and Output B are both genuinely selected for
- * that scene, Output B's `sourceOutputAId` actually points at that selected
- * Output A, and `plan.numbering` independently records the same A/B
- * relationship.
- *
- * By the time this runs, `hasRelationalIntegrityViolation` has already
- * rejected the plan outright if any identity had more than one selected A,
- * B, or numbering row (Fourth Corrective C3), so a validated identity here
- * is guaranteed to have at most one of each - this function only needs to
- * confirm the single row's own consistency, never resolve ambiguity among
- * duplicates.
- */
-function shouldEmitPairFile(
-  plan: ExportPlan,
-  sessionId: ExportPlan['numbering'][number]['sessionId'],
-  sceneId: ExportPlan['numbering'][number]['sceneId'],
-): boolean {
-  if (!PAIR_FILE_ELIGIBLE_SCOPES.has(plan.scope.scopeDetail)) return false;
-  const outputA = plan.selection.outputsA.find(
-    (item) => item.sessionId === sessionId && item.sceneId === sceneId,
+  const scopeArrays = validateScopeArrays(plan);
+  if (!scopeArrays.ok) return scopeFailure(scopeArrays.field);
+
+  const numberingIndex = validateNumbering(plan, scopeArrays.allowedScenesBySession);
+  if (!numberingIndex.ok) return linkFailure('packaging.numbering');
+
+  const sessionIdSet = new Set<SessionId>(plan.scope.sessionIds);
+  const groupIdSet = new Set<GroupId>(plan.scope.groupIds);
+  const groupNumberingIndex = validateGroupNumbering(
+    plan,
+    sessionIdSet,
+    groupIdSet,
+    numberingIndex.numberingBySessionAndScene,
   );
-  const outputB = plan.selection.outputsB.find(
-    (item) => item.sessionId === sessionId && item.sceneId === sceneId,
+  if (!groupNumberingIndex.ok) return groupFailure('packaging.groupNumbering');
+
+  const outputAIndex = validateSelectedOutputA(plan, numberingIndex.numberingBySessionAndScene);
+  if (!outputAIndex.ok) return linkFailure('packaging.selection.outputsA');
+
+  const outputBIndex = validateSelectedOutputB(
+    plan,
+    numberingIndex.numberingBySessionAndScene,
+    outputAIndex.outputABySessionAndScene,
   );
-  if (outputA === undefined || outputB === undefined) return false;
-  if (outputB.sourceOutputAId !== outputA.id) return false;
-  const numberingEntry = plan.numbering.find(
-    (item) => item.sessionId === sessionId && item.sceneId === sceneId,
-  );
-  if (numberingEntry === undefined) return false;
-  return numberingEntry.outputAId === outputA.id && numberingEntry.outputBId === outputB.id;
+  if (!outputBIndex.ok) return linkFailure('packaging.selection.outputsB');
+
+  return {
+    ok: true,
+    value: {
+      numberingBySessionAndScene: numberingIndex.numberingBySessionAndScene,
+      outputABySessionAndScene: outputAIndex.outputABySessionAndScene,
+      outputBBySessionAndScene: outputBIndex.outputBBySessionAndScene,
+      groupsBySessionAndId: groupNumberingIndex.groupsBySessionAndId,
+      groupNumberingBySessionAndGroup: groupNumberingIndex.groupNumberingBySessionAndGroup,
+    },
+  };
 }
 
 /** Builds every content file. Returns `null` on the first unrecoverable resource-limit failure. */
@@ -541,6 +766,7 @@ export function buildPackageContentEntries(
   plan: ExportPlan,
   formatterInput: ExportFormatterInput,
   limits: ExportSafetyLimits,
+  index: ValidatedPackagePlanIndex,
 ): PackagePlanResult {
   const contentLimits = contentLimitsFrom(limits);
   const maxSegment = limits.maxPathSegment;
@@ -645,8 +871,22 @@ export function buildPackageContentEntries(
       });
     }
 
-    const sessionOutputsA = plan.selection.outputsA.filter((item) => item.sessionId === sessionId);
-    for (const outputA of sessionOutputsA) {
+    // Deficiency Closure §3: driven from the already-validated
+    // `numberingBySessionAndScene`/`outputABySessionAndScene`/
+    // `outputBBySessionAndScene` maps built by `validatePackagePlanIntegrity`
+    // - never a fresh `.find()`/`.filter()` scan of the raw, untrusted
+    // `plan.selection` arrays. Map insertion order mirrors the canonical
+    // per-session scene order (`plan.numbering` is itself canonical, proven
+    // by the numbering stage), so iterating this session's numbering rows in
+    // order reproduces the same scene-number ordering the prior `.filter()`
+    // calls relied on.
+    const sessionNumbering = [...(index.numberingBySessionAndScene.get(sessionId)?.values() ?? [])];
+    const sessionOutputA = index.outputABySessionAndScene.get(sessionId);
+    const sessionOutputB = index.outputBBySessionAndScene.get(sessionId);
+
+    for (const entry of sessionNumbering) {
+      const outputA = sessionOutputA?.get(entry.sceneId);
+      if (outputA === undefined) continue;
       const slug = slugs.get(outputA.id) ?? slugify(outputA.id, outputA.id);
       files.push({
         relativePath: `${sessionFolder}/prompts/A/${outputFileName(outputA.sceneNumber, slug, 'A', maxSegment)}`,
@@ -657,8 +897,9 @@ export function buildPackageContentEntries(
       });
     }
 
-    const sessionOutputsB = plan.selection.outputsB.filter((item) => item.sessionId === sessionId);
-    for (const outputB of sessionOutputsB) {
+    for (const entry of sessionNumbering) {
+      const outputB = sessionOutputB?.get(entry.sceneId);
+      if (outputB === undefined) continue;
       const slug = slugs.get(outputB.sourceOutputAId) ?? slugify(outputB.id, outputB.id);
       files.push({
         relativePath: `${sessionFolder}/prompts/B/${outputFileName(outputB.sceneNumber, slug, 'B', maxSegment)}`,
@@ -669,29 +910,29 @@ export function buildPackageContentEntries(
       });
     }
 
-    const sessionNumbering = plan.numbering.filter(
-      (item) => item.sessionId === sessionId && shouldEmitPairFile(plan, sessionId, item.sceneId),
-    );
-    // Fourth Corrective C3: consume the already-validated relation directly
-    // rather than an ambiguous global filter/find. `hasRelationalIntegrityViolation`
-    // has already rejected any plan carrying more than one numbering row per
-    // identity, so this Set can never actually drop a legitimate row - it is
-    // defense-in-depth so a single validated identity can never emit more than
-    // one collision-suffixed pair file even if that upstream gate regresses.
-    const emittedPairIdentities = new Set<string>();
-    for (const entry of sessionNumbering) {
-      const identity = identityKey(entry.sessionId, entry.sceneId);
-      if (emittedPairIdentities.has(identity)) continue;
-      emittedPairIdentities.add(identity);
-      const built = buildPairExecutionMarkdown(entry, contentLimits);
-      if (built === null) return overflow('packaging.pairExecution');
-      files.push({
-        relativePath: `${sessionFolder}/prompts/pairs/${pairFileName(entry.sceneNumber, maxSegment)}`,
-        kind: 'prompt_pair',
-        format: 'markdown',
-        mediaType: 'text/markdown;charset=utf-8',
-        bytes: built.bytes,
-      });
+    // Deficiency Closure §3: replaces `shouldEmitPairFile`, which re-ran
+    // `.find()` against the untrusted raw plan on every call. A pair file is
+    // eligible for this scope, and both a selected Output A and a selected
+    // Output B already independently validated (exact id/scene-number/label
+    // agreement with the same numbering row - `validateSelectedOutputB`
+    // additionally required the paired A to exist whenever `policy.outputA`
+    // holds) are enough to emit it; no further re-resolution against
+    // `plan.selection`/`plan.numbering` is needed or performed.
+    if (PAIR_FILE_ELIGIBLE_SCOPES.has(plan.scope.scopeDetail)) {
+      for (const entry of sessionNumbering) {
+        const outputA = sessionOutputA?.get(entry.sceneId);
+        const outputB = sessionOutputB?.get(entry.sceneId);
+        if (outputA === undefined || outputB === undefined) continue;
+        const built = buildPairExecutionMarkdown(entry, contentLimits);
+        if (built === null) return overflow('packaging.pairExecution');
+        files.push({
+          relativePath: `${sessionFolder}/prompts/pairs/${pairFileName(entry.sceneNumber, maxSegment)}`,
+          kind: 'prompt_pair',
+          format: 'markdown',
+          mediaType: 'text/markdown;charset=utf-8',
+          bytes: built.bytes,
+        });
+      }
     }
 
     const cover = plan.selection.covers.find((item) => item.sessionId === sessionId);
@@ -752,9 +993,9 @@ export function buildPackageContentEntries(
   }
 
   const entries: PackageEntry[] = [];
-  for (let index = 0; index < files.length; index += 1) {
-    const file = files[index]!;
-    const relativePath = resolvedRelativePaths[index]!;
+  for (let index2 = 0; index2 < files.length; index2 += 1) {
+    const file = files[index2]!;
+    const relativePath = resolvedRelativePaths[index2]!;
     const fullPath = `${projectSlug}/${relativePath}`;
     if (fullPath.length > limits.maxPathLength || !isSafeZipPath(fullPath)) {
       return {
