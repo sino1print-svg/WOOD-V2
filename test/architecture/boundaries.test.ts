@@ -22,6 +22,7 @@ import {
 } from './scan';
 
 const { edges, unresolvedInternal } = scan();
+const EXPORT_ENGINE_ROOT = path.join(LAYER_ROOTS.engines, 'export-engine');
 
 describe('architecture boundaries — real source (zero violations)', () => {
   it('scans a non-empty set of edges', () => {
@@ -56,6 +57,15 @@ describe('architecture boundaries — real source (zero violations)', () => {
       checkAllowedTargets(edges, path.join(LAYER_ROOTS.engines, 'rule-engine'), [
         LAYER_ROOTS.shared,
         LAYER_ROOTS.config,
+      ]),
+    ).toEqual([]);
+  });
+  it('Export Engine imports only shared + config + export infrastructure (+ self)', () => {
+    expect(
+      checkAllowedTargets(edges, EXPORT_ENGINE_ROOT, [
+        LAYER_ROOTS.shared,
+        LAYER_ROOTS.config,
+        LAYER_ROOTS.export,
       ]),
     ).toEqual([]);
   });
@@ -160,6 +170,42 @@ describe('architecture boundaries — synthetic fixtures FAIL CLOSED', () => {
       fixtureEdge('engines/export-engine/index.ts', 'engines/scene-engine/index.ts', 'require'),
     ];
     expect(checkEngineMatrix(e).length).toBe(1);
+  });
+  it('Export Engine -> Persistence is flagged for every import form', () => {
+    for (const kind of kinds) {
+      const e = [
+        fixtureEdge('engines/export-engine/index.ts', 'persistence/project-store/index.ts', kind),
+      ];
+      expect(
+        checkAllowedTargets(e, EXPORT_ENGINE_ROOT, [
+          LAYER_ROOTS.shared,
+          LAYER_ROOTS.config,
+          LAYER_ROOTS.export,
+        ]).length,
+      ).toBe(1);
+    }
+  });
+  it('Export Engine -> UI is flagged by its explicit allowlist', () => {
+    const e = [
+      fixtureEdge('engines/export-engine/index.ts', 'ui/app-shell/AppShell.tsx', 'static'),
+    ];
+    expect(
+      checkAllowedTargets(e, EXPORT_ENGINE_ROOT, [
+        LAYER_ROOTS.shared,
+        LAYER_ROOTS.config,
+        LAYER_ROOTS.export,
+      ]).length,
+    ).toBe(1);
+  });
+  it('Export Engine -> export infrastructure remains allowed', () => {
+    const e = [fixtureEdge('engines/export-engine/index.ts', 'export/index.ts', 'static')];
+    expect(
+      checkAllowedTargets(e, EXPORT_ENGINE_ROOT, [
+        LAYER_ROOTS.shared,
+        LAYER_ROOTS.config,
+        LAYER_ROOTS.export,
+      ]),
+    ).toEqual([]);
   });
   it('engine -> Orchestrator (app) is flagged (all forms)', () => {
     for (const kind of kinds) {

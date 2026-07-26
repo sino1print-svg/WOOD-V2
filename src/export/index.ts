@@ -1,6 +1,8 @@
-/**
- * Export Formatters — NOT implemented in Phase 0. Structure/placeholder only.
- * Implementation deferred per 12_IMPLEMENTATION_GUIDE §9 build order (09_EXPORT_ENGINE §4).
- * No engine or business logic may live here in Phase 0.
- */
-export {};
+/** Export infrastructure public surface through Phase 10, Batch 10.3. */
+export { encodeCanonicalJson, formatCanonicalJson } from './canonical-json';
+export { PERSISTED_EXPORT_FORMAT } from './format-mapping';
+export type * from './format-result';
+export { formatReadableJson } from './json';
+export { formatMarkdown } from './markdown';
+export { formatTxt } from './txt';
+export { encodeUtf8, hasUtf8Bom, utf8ByteLength } from './utf8';
