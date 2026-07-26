@@ -1,23 +1,24 @@
 {
-  "package": "mockup-photoshoot-director-phase10-batch10.4-fifth-corrective",
-  "phase": "Phase 10 — Batch 10.4 — Fifth Corrective (Scope-Selection Allowlist Integrity, Resolved-ID Anchoring, Unique Scope Identities, Exact ZIP Order Diagnostics)",
-  "status": "PHASE 10 — BATCH 10.4 FIFTH CORRECTIVE COMPLETE — READY FOR INDEPENDENT AUDIT",
-  "created_at_utc": "2026-07-26T18:00:00Z",
+  "package": "mockup-photoshoot-director-phase10-batch10.4-consolidated-final-corrective",
+  "phase": "Phase 10 — Batch 10.4 — Consolidated Final Corrective (Frozen Acceptance Contract for Deterministic Packaging)",
+  "status": "PHASE 10 — BATCH 10.4 CONSOLIDATED FINAL CORRECTIVE COMPLETE — READY FOR INDEPENDENT AUDIT",
+  "created_at_utc": "2026-07-26T19:30:00Z",
   "contents": "Complete runnable working tree (git-ready). node_modules/dist/.git excluded; run npm ci to install.",
   "starting_checkpoint": {
-    "filename": "mockup-photoshoot-director-phase10-batch10.4-fourth-corrective.zip",
-    "sha256": "05a3bfcfdf92ee9580a9645b4acbefa53a1b29d08f8cb245242936ba5ca33059",
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-fifth-corrective.zip",
+    "sha256": "a77343efacfc240a8bcf1b0dd46f1c9900438a9fe8c6e03da7a8e835200d5e35",
     "verified_on_receipt": true
   },
-  "corrective_scope": "Responds to the independent audit findings F1-F6 against the Batch 10.4 Fourth Corrective packaging delivery. No Batch 10.5 work performed. No UI, clipboard, download, backup, restore, Prompt Pack, rendered-image, persistence-write, or external-integration work performed.",
+  "corrective_scope": "Executes the Consolidated Final Corrective document (which replaces and cancels the previously issued Sixth Corrective), responding to findings F1-F6 of the independent audit against the Batch 10.4 Fifth Corrective. No Batch 10.5 work performed. No UI, clipboard, download, backup, restore, Prompt Pack, rendered-image, persistence-write, or external-integration work performed.",
   "findings_addressed": {
-    "F1": "hasScopePolicyViolation (new) rejects a shape-valid plan that selects an artifact category its own resolved scope.policy disallows (e.g. an Output A injected into an output_b/group_b/cover/execution_plan package). The prior relational checks proved selected artifacts were mutually consistent with each other, but never checked whether a category should have been selected at all under the resolved scope's own policy flags - a single internally-consistent Output A (e.g. the scene's own genuine record) satisfied every relational check and slipped through. This check runs first, before hasDuplicateScopeIdentifiers/hasRelationalIntegrityViolation, and fails closed with the registered EXPORT_SCOPE_001 code.",
-    "F2": "hasRelationalIntegrityViolation now anchors every selected/referenced output id to plan.scope.outputAIds/outputBIds - the resolved scope's own flat ground-truth allowlists, computed once by resolveExportScope directly from the source project, never touched by selection/numbering construction. Two jointly-forged-but-mutually-consistent fields (e.g. Output B's sourceOutputAId and its numbering row's outputAId, both set to the same fabricated value) now fail because that value is not a real, in-scope id, not merely because the fields disagree with each other. A reverse-uniqueness claim map additionally rejects a real, in-scope id being claimed by more than one (sessionId, sceneId) identity, closing the case where a selected Output A whose id belongs to a different in-scope scene is jointly forged into another identity's slot. One residual, explicitly documented limitation remains: a fully bijective exchange of two real ids between two in-scope identities (every dependent field on both sides re-forged together) cannot be distinguished from a legitimate assignment using only the flat, per-category existence allowlists this contract exposes - see the completion report and the corresponding test's block comment for the full rationale (closing it would require a schema change to the frozen ExportResolvedScope contract, or re-deriving from the source project inside packaging, both out of scope).",
-    "F3": "hasDuplicateScopeIdentifiers (new) rejects a duplicated real id in plan.scope.sessionIds/groupIds/outputAIds/outputBIds/coverIds/versionIds before content is built - closing the case where scope.sessionIds = [sameSession, sameSession] caused the same real session to be re-emitted under two different ordinal folders. scope.sceneIds is deliberately excluded from this check: a SceneId is only guaranteed unique within its own session, so a complete_project/all-scope plan spanning two sessions that happen to reuse a scene id string legitimately produces that duplicate in this flat, session-less array - rejecting it would have broken the audit's own required C5 same-sceneId matrix, since content construction is keyed by the complete (sessionId, sceneId) identity throughout and a repeated scene-id string alone cannot cause double-emission.",
-    "F4": "The ZIP verifier's canonical local/central physical-order check is now a dedicated pass (reused-offset check, then a central-order monotonicity scan, then coverage: prefix/overlap/gap/final) run strictly before the coverage checks, rather than one combined pass. Previously, a real interior local-block swap was reported as local_entry_gap and a full reversal as unexpected_archive_prefix - both real rejections, but not the exact local_order_mismatch reason the physical-order disagreement actually represents, because the old combined pass could reach a forward-gap or non-zero-first-offset anomaly before it ever saw the backward jump that proves the order violation. Both cases now assert exactly structural/local_order_mismatch.",
-    "F5": "Adds a genuine same-sceneId cross-session adversarial matrix (5 items: both sessions valid; session 2 has no selected A/B; session 2 B points at session 1's A; session 2 numbering forged to session 1's ids; array order reversed) using one literal SceneId string reused across two real, independent sessions. The Fourth Corrective's twoSessionPairPlan() helper (used by its 'cross-session reused-identity scopes' tests) gave each session a distinct scene id and never actually exercised the reused-sceneId condition its own tests claimed to cover; those tests are unchanged (they still validate real, useful behavior over distinct-scene-id sessions) and this new, separate matrix closes the literal reused-sceneId gap the audit identified.",
-    "F6": "Delivers the completion report as its own standalone Markdown file (this delivery's PHASE10-BATCH10.4-FIFTH-CORRECTIVE-COMPLETION-REPORT.md), alongside the checkpoint ZIP + sha256, CHANGED-FILES-MANIFEST.md, and INDEPENDENT-VERIFIER-TEST-EVIDENCE.md - five files as required, none of them a screenshot or an inline-only description."
+    "F1": "A fully bijective exchange of two real Output A ids between two in-scope pair-bearing identities - previously a documented, unclosed limitation - is now rejected. hasNumberingCanonicalOrderViolation requires plan.numbering's outputAId sequence to equal plan.scope.outputAIds exactly (length, value, index, never sorted or deduplicated); a bijective swap changes the sequence at each swapped identity's position relative to the untouched scope array, which the exact-sequence comparison catches without any schema change or re-derivation from the source project.",
+    "F2": "Extra hostile numbering rows are now rejected and never reach README/manifest/ZIP content. The same canonical-sequence check closes this: an injected row (first, middle, or last) changes plan.numbering.length relative to plan.scope.outputAIds.length, failing the exact-length-and-value comparison before any content is built.",
+    "F3": "scope.sceneIds duplicate/inconsistency handling is now composite rather than a blanket exclusion. Single-session scopes still require sceneIds to have no duplicate; complete_project/all scopes now require selection.sessions to equal scope.sessionIds exactly (order and value) and the flattened per-session scene lists (in that order) to equal scope.sceneIds exactly - so a scene id legitimately reused once per distinct session still passes, while an isolated scope.sceneIds override inconsistent with the real per-session data, or an extra unaccounted occurrence, now fails.",
+    "F4": "Fixed the real production bug in src/engines/export-engine/selection.ts: Output A/B/execution-plan selection built its numbering lookup from a scene-only Map (new Map(numbering.map(entry => [entry.sceneId, entry]))). Since a SceneId is only unique within its own session, two sessions reusing the same scene id silently collided in that flat map, and the later session's numbering row overwrote the earlier session's - misattributing scene numbers and A/B labels across sessions in exactly the reproduction the audit gave (session 1's own scene inheriting session 2's '2A'/'2B' labels). Replaced with a nested (sessionId -> sceneId -> entry) map; verified against the exact §12.1 mandatory fixture (session-1/scene-shared=1, session-2/scene-extra=1, session-2/scene-shared=2) producing the required 1A/1B, 1A/1B, 2A/2B numbering and package paths.",
+    "F5": "Added a genuine, committed same-sceneId-different-ordinal test (Consolidated Final Corrective §12.1) reproducing the exact adversarial construction from the audit, plus a numbering matrix (extra/missing/duplicate/out-of-scope/fake-id/permutation/label/scene-number cases) and a group-numbering matrix (duplicate/extra/missing/mismatch/wrong-label/out-of-group-scene cases) that did not exist before this corrective.",
+    "F6": "Delivers a committed, reproducible external ZIP verification command (npm run verify:zip:external, backed by scripts/verify-golden-zips-external.mjs and test/export-engine/packaging/golden-zip-dump.test.ts) rather than relying on ad hoc scratch scripts as the only evidence - it builds all 10 golden fixtures plus one deliberately physically-reordered-but-Info-ZIP-tolerated archive from the current code, independently verifies every fixture via the system unzip binary, and confirms the reordered archive is externally accepted while verifyPackageZip rejects it with the exact structural/local_order_mismatch reason."
   },
+  "architecture_note": "hasScopePolicyViolation, hasDuplicateScopeIdentifiers, hasNumberingCanonicalOrderViolation, hasNumberingFieldViolation, hasGroupNumberingViolation, and hasRelationalIntegrityViolation are each still their own narrow, unit-testable function, but package.ts now calls exactly one entry point - validatePackagePlanIntegrity - in one fixed precedence order, replacing what had grown into a sequence of independently-invoked boolean checks.",
   "archived_release_metadata": [
     {
       "file": "ARCHIVE-PHASE9-MANIFEST.json",
@@ -35,10 +36,10 @@
       "note": "Pre-Phase-10 per-file checksum listing (322 entries, Phase 9 vintage), superseded by CHECKSUMS.txt."
     }
   ],
-  "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over the full working tree, excluding node_modules/dist/.git and CHECKSUMS.txt itself, 403 files including this manifest's own final line)",
+  "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over the full working tree, excluding node_modules/dist/.git and CHECKSUMS.txt itself, 406 files including this manifest's own final line)",
   "source_tree_combined_hash": {
     "command": "npm run hash:source-tree",
-    "value": "a42d120c267a027640f0dc976e7361d23f12b58e4f4ad457ad0aaad6de56a6ab  402 files",
+    "value": "70dc227ac77b79a8a10150b0f5e50e72280e5f1aeb16a97a234b2c5d6c777e2d  405 files",
     "note": "scripts/source-tree-hash.mjs explicitly excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt by exact relative path (documented in the script itself), because a combined hash that embeds itself in one of the files it hashes can never reproduce - the act of writing the value changes the bytes that produced it. This value is reproducible on any clean extraction: editing CHECKPOINT-MANIFEST.json or CHECKSUMS.txt afterward does not change it, since both are now outside the hashed set. Verify with: sha256sum -c CHECKSUMS.txt && node scripts/source-tree-hash.mjs. Verified reproducible: run twice consecutively in this tree, identical both times."
   },
   "docs_spec_modified": false,
@@ -47,10 +48,16 @@
   "batch_10_5_started": false,
   "changed_files_this_corrective": {
     "modified_source": [
+      "src/engines/export-engine/selection.ts",
       "src/export/packaging/package.ts",
-      "src/export/packaging/package-plan.ts",
-      "src/export/packaging/zip-verifier.ts"
+      "src/export/packaging/package-plan.ts"
     ],
-    "modified_tests": ["test/export-engine/packaging/corrective-adversarial.test.ts"]
+    "modified_tests": ["test/export-engine/packaging/corrective-adversarial.test.ts"],
+    "added_tests": [
+      "test/export-engine/packaging/consolidated-final-corrective.test.ts",
+      "test/export-engine/packaging/golden-zip-dump.test.ts"
+    ],
+    "added_scripts": ["scripts/verify-golden-zips-external.mjs"],
+    "modified_metadata": ["package.json (adds the verify:zip:external script entry)"]
   }
 }
