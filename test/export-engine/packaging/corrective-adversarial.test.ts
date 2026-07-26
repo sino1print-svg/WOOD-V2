@@ -469,17 +469,22 @@ describe('Third Corrective F2 - pair eligibility keyed by complete session+scene
     expect(session01Kinds).toContain('prompt_b');
   });
 
-  it('session 2 numbering forged to reference session 1 real output ids, with no Output A or B selected for session 2, does not cross-contaminate either session', () => {
+  it('session 2 numbering forged to reference session 1 real output ids, with no Output A or B selected for session 2: rejected outright by the canonical numbering-sequence check', () => {
     // Fourth Corrective audit F4: despite the title this test carried before,
     // its two numbering rows belong to two DIFFERENT session identities, not
     // one reused identity - this is cross-session forgery of a numbering row
-    // that has no corresponding selected Output A/B at all for session 2 (so
-    // it can never drive pair-file emission on its own), not a true
-    // same-identity duplicate. See the "Fourth Corrective C1/C2" describe
-    // block below for the actual same-identity duplicate-numbering-row tests.
+    // that has no corresponding selected Output A/B at all for session 2. See
+    // the "Fourth Corrective C1/C2" describe block below for the actual
+    // same-identity duplicate-numbering-row tests.
+    //
+    // Consolidated Final Corrective §8.2: forging session 2's numbering to
+    // duplicate session 1's real output ids makes
+    // `plan.numbering.map(outputAId)` disagree with `plan.scope.outputAIds`
+    // at session 2's position (it now holds session 1's id, not session 2's
+    // real one) - the whole plan is rejected before any content is built,
+    // which is strictly stronger than the old "succeeds but no leakage"
+    // result.
     const { hostilePlan } = crossSessionHostilePlan();
-    // Additionally corrupt session 2's numbering row to point at session 1's
-    // real output ids directly (an even more direct forgery attempt).
     const session1Numbering = hostilePlan.numbering.find(
       (item) => item.sessionId === CANONICAL_SESSION_ID,
     )!;
@@ -501,12 +506,10 @@ describe('Third Corrective F2 - pair eligibility keyed by complete session+scene
         limits: APP_CONFIG.limits.export,
       }),
     );
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const session02Kinds = result.entries
-      .filter((entry) => entry.path.includes('/session-02/'))
-      .map((entry) => entry.kind);
-    expect(session02Kinds).not.toContain('prompt_pair');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
   });
 });
 
@@ -804,7 +807,15 @@ describe('Fourth Corrective C1/C2 - exact relational cardinality and B-only link
       }
     });
 
-    it('session order reversed: identical (successful) result regardless of array insertion order', () => {
+    it('selected Output A/B array order reversed: identical (successful) result regardless of array insertion order', () => {
+      // Consolidated Final Corrective §8.2: `plan.numbering`'s own order is
+      // now a canonical, semantically-significant sequence that must equal
+      // `plan.scope.outputAIds` exactly (never sorted, never reordered) -
+      // so, unlike the selected-output arrays below, `numbering` itself is
+      // intentionally left untouched here rather than reversed too; a test
+      // that reverses `numbering` is a distinct hostile-input case (see
+      // "Consolidated Final Corrective §8" tests), not an
+      // insertion-order-independence case.
       const { plan } = twoSessionPairPlan();
       const forward = packageExport(packageInputFor({ ok: true, value: plan }));
       const reversedPlan = {
@@ -814,7 +825,6 @@ describe('Fourth Corrective C1/C2 - exact relational cardinality and B-only link
           outputsA: [...plan.selection.outputsA].reverse(),
           outputsB: [...plan.selection.outputsB].reverse(),
         },
-        numbering: [...plan.numbering].reverse(),
       };
       const reversed = packageExport(packageInputFor({ ok: true, value: reversedPlan }));
       expect(forward.ok).toBe(true);
@@ -2333,34 +2343,21 @@ describe('Fifth Corrective C2 - resolved-scope-ID anchoring for selected/referen
       expectRelationalFailure(mutated);
     });
 
-    // KNOWN, DOCUMENTED LIMITATION - not closed by this corrective. A full,
-    // *bijective* exchange of two real, in-scope identities' Output A ids
-    // (each identity's own id, sourceOutputAId, and numbering.outputAId are
-    // *all* jointly re-forged together to the other's real id) currently
-    // passes every check in `hasRelationalIntegrityViolation`. This is not
-    // an oversight: every check available to a pure internal-consistency
-    // validator is either a per-field agreement check (defeated here
-    // because both sides forge every dependent field together) or a
-    // reverse-uniqueness/no-duplicate-claim check (defeated here because a
-    // bijective swap claims each real id exactly once - just via the wrong
-    // identity - so no id is ever claimed twice and no uniqueness
-    // constraint is violated). Detecting this specific attack would require
-    // an external ground-truth mapping from each `(sessionId, sceneId)`
-    // identity to *its own* correct resolved id - but `ExportResolvedScope`
-    // deliberately exposes only flat, per-category existence allowlists
-    // (`outputAIds`/`outputBIds`), not a keyed identity->id map, and scene
-    // ids are not even guaranteed 1:1 positionally alignable with output ids
-    // (a scene may legitimately have no Output A outside `output_a`-shaped
-    // scopes). Closing this would require either a schema change to the
-    // frozen `ExportResolvedScope` contract, or re-deriving from the source
-    // project inside packaging - both out of scope (the former needs
-    // explicit spec authorization; the latter would break the terminal,
-    // read-only packaging architecture every corrective through this one
-    // has preserved). Exploiting it also requires the attacker to already
-    // fully control `ExportPlanResult` construction, bypassing
-    // `createExportPlan` entirely - at that point every field, including
-    // any additional cross-check field, is equally forgeable together.
-    it('DOCUMENTED LIMITATION: a fully bijective exchange of two real Output A ids between two in-scope pair-bearing identities is not currently detected', () => {
+    // Previously a documented, unclosed limitation (Fifth Corrective): a
+    // fully bijective exchange of two real Output A ids between two
+    // in-scope identities (every dependent field on both sides re-forged
+    // together) defeated per-field agreement checks and reverse-uniqueness
+    // claim maps alike, since a bijective swap claims each real id exactly
+    // once and no field ever disagrees with its own counterpart.
+    //
+    // Consolidated Final Corrective §8.2 closes this: `plan.numbering` must
+    // equal `plan.scope.outputAIds` as an exact, position-by-position
+    // sequence, never merely as a set. Swapping the two real ids' positions
+    // in `numbering` changes that sequence relative to the untouched
+    // `scope.outputAIds` (each position now holds the *other* identity's
+    // id), which the canonical-order check rejects - closing the gap
+    // without a schema change or any re-derivation from the source project.
+    it('a fully bijective exchange of two real Output A ids between two in-scope pair-bearing identities is rejected by the canonical numbering-sequence check', () => {
       const { plan, secondSessionId } = twoSessionPlan();
       const outputA1 = plan.selection.outputsA.find((a) => a.sessionId === CANONICAL_SESSION_ID)!;
       const outputA2 = plan.selection.outputsA.find((a) => a.sessionId === secondSessionId)!;
@@ -2392,10 +2389,10 @@ describe('Fifth Corrective C2 - resolved-scope-ID anchoring for selected/referen
         ),
       };
       const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-      // Documents actual current behavior (accepted) - see the block
-      // comment above for why this is a known, out-of-scope architectural
-      // limitation rather than an unaddressed finding.
-      expect(result.ok).toBe(true);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+      expect('zipBytes' in result).toBe(false);
     });
   });
 });
@@ -2529,28 +2526,134 @@ describe('Fifth Corrective C3 - resolved scope identity-allowlist arrays must be
     expect(hasDuplicateScopeIdentifiers(duplicated)).toBe(true);
   });
 
-  it('reversing a valid, unique scope.sessionIds array does not itself trigger a duplicate rejection', () => {
+  it('Consolidated Final Corrective §7.3 required test #5: scope.sessionIds reversed in isolation (selection.sessions order left untouched) fails', () => {
+    // A multi-session scope's `scope.sessionIds` order and
+    // `selection.sessions` order must agree exactly (§7.3) - reversing only
+    // one of the two, without the other, is exactly the kind of internal
+    // inconsistency this composite check exists to catch, distinct from a
+    // literal duplicate value.
     const plan = twoSessionComplexPlan();
     const reversed = {
       ...plan,
       scope: { ...plan.scope, sessionIds: [...plan.scope.sessionIds].reverse() },
     };
-    expect(hasDuplicateScopeIdentifiers(reversed)).toBe(false);
+    expect(hasDuplicateScopeIdentifiers(reversed)).toBe(true);
   });
 
-  it('scope.sceneIds legitimately containing the same string twice (reused across two different sessions) is NOT treated as a duplicate-scope violation', () => {
-    // Scene ids are only unique within their own session (EX §12 Third
-    // Corrective F2) - a flat, session-less scope.sceneIds array spanning
-    // two sessions that each name a scene the same thing is valid, not
-    // corrupt. Content construction is keyed by the complete
-    // (sessionId, sceneId) identity throughout, so this can never cause the
-    // double-emission this check exists to prevent.
-    const plan = twoSessionComplexPlan();
-    const reusedSceneIds = {
-      ...plan,
-      scope: { ...plan.scope, sceneIds: [CANONICAL_SCENE_ID, CANONICAL_SCENE_ID] },
+  it('a genuinely consistent same-sceneId reused-across-two-sessions plan is NOT treated as a duplicate-scope violation', () => {
+    // Scene ids are only unique within their own session (EX §12) - a flat,
+    // session-less `scope.sceneIds` array spanning two sessions that each
+    // name a scene the same thing is valid, not corrupt, *provided*
+    // `selection.sessions` (in `scope.sessionIds` order) flattens to that
+    // exact same sequence (§7.3). Unlike a bare `scope.sceneIds` override in
+    // isolation (which would disagree with the real, distinct per-session
+    // scene lists and correctly fail), this constructs a real plan whose
+    // two sessions genuinely share one literal scene-id string throughout.
+    const project = structuredClone(CANONICAL_PROJECT) as Project;
+    const original = project.sessions[CANONICAL_SESSION_ID]!;
+    const originalScene = original.scenes[CANONICAL_SCENE_ID]!;
+    const secondSessionId = 'session-second' as SessionId;
+    const secondOutputAId = 'output-a-second' as OutputAId;
+    const secondOutputBId = 'output-b-second' as OutputBId;
+    const secondScene = {
+      ...originalScene,
+      sessionId: secondSessionId,
+      outputA: { ...originalScene.outputA, id: secondOutputAId, sceneId: CANONICAL_SCENE_ID },
+      outputB: {
+        ...originalScene.outputB!,
+        id: secondOutputBId,
+        sceneId: CANONICAL_SCENE_ID,
+        sourceOutputAId: secondOutputAId,
+      },
     };
-    expect(hasDuplicateScopeIdentifiers(reusedSceneIds)).toBe(false);
+    const secondGroupId = 'group-second' as GroupId;
+    const secondSession = {
+      ...original,
+      id: secondSessionId,
+      scenes: { [CANONICAL_SCENE_ID]: secondScene },
+      groups: {
+        [secondGroupId]: {
+          ...Object.values(original.groups)[0]!,
+          id: secondGroupId,
+          sessionId: secondSessionId,
+          sceneIds: [CANONICAL_SCENE_ID],
+        },
+      },
+      cover: {
+        ...original.cover!,
+        id: 'cover-second' as CoverId,
+        sessionId: secondSessionId,
+        sourceSaleImageIds: [secondOutputAId],
+      },
+    };
+    project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
+    project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
+    const planResult = createExportPlan({
+      ...CANONICAL_EXPORT_INPUT,
+      source: { ...CANONICAL_EXPORT_INPUT.source, project },
+      scope: { baseScope: ExportScope.All, scopeDetail: 'complete_project' },
+    });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    expect(planResult.value.scope.sceneIds).toEqual([CANONICAL_SCENE_ID, CANONICAL_SCENE_ID]);
+    expect(hasDuplicateScopeIdentifiers(planResult.value)).toBe(false);
+  });
+
+  it('an invalid extra third occurrence of a reused sceneId in the flat scope array fails', () => {
+    const project = structuredClone(CANONICAL_PROJECT) as Project;
+    const original = project.sessions[CANONICAL_SESSION_ID]!;
+    const originalScene = original.scenes[CANONICAL_SCENE_ID]!;
+    const secondSessionId = 'session-second' as SessionId;
+    const secondOutputAId = 'output-a-second' as OutputAId;
+    const secondOutputBId = 'output-b-second' as OutputBId;
+    const secondScene = {
+      ...originalScene,
+      sessionId: secondSessionId,
+      outputA: { ...originalScene.outputA, id: secondOutputAId, sceneId: CANONICAL_SCENE_ID },
+      outputB: {
+        ...originalScene.outputB!,
+        id: secondOutputBId,
+        sceneId: CANONICAL_SCENE_ID,
+        sourceOutputAId: secondOutputAId,
+      },
+    };
+    const secondGroupId = 'group-second' as GroupId;
+    const secondSession = {
+      ...original,
+      id: secondSessionId,
+      scenes: { [CANONICAL_SCENE_ID]: secondScene },
+      groups: {
+        [secondGroupId]: {
+          ...Object.values(original.groups)[0]!,
+          id: secondGroupId,
+          sessionId: secondSessionId,
+          sceneIds: [CANONICAL_SCENE_ID],
+        },
+      },
+      cover: {
+        ...original.cover!,
+        id: 'cover-second' as CoverId,
+        sessionId: secondSessionId,
+        sourceSaleImageIds: [secondOutputAId],
+      },
+    };
+    project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
+    project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
+    const planResult = createExportPlan({
+      ...CANONICAL_EXPORT_INPUT,
+      source: { ...CANONICAL_EXPORT_INPUT.source, project },
+      scope: { baseScope: ExportScope.All, scopeDetail: 'complete_project' },
+    });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    const withExtraOccurrence = {
+      ...planResult.value,
+      scope: {
+        ...planResult.value.scope,
+        sceneIds: [...planResult.value.scope.sceneIds, CANONICAL_SCENE_ID],
+      },
+    };
+    expect(hasDuplicateScopeIdentifiers(withExtraOccurrence)).toBe(true);
   });
 });
 
@@ -2704,7 +2807,12 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
     expect('zipBytes' in result).toBe(false);
   });
 
-  it('item 5: reversing session order and A/B/numbering array order produces an identical, successful per-scene result (same reused sceneId)', () => {
+  it('item 5: reversing selected Output A/B array order produces an identical, successful per-scene result (same reused sceneId)', () => {
+    // Consolidated Final Corrective §8.2: `plan.numbering` is left
+    // untouched here - its order is now a canonical sequence that must
+    // equal `plan.scope.outputAIds` exactly, not an arbitrary insertion
+    // order - so only the selected-output arrays (grouped by identity, not
+    // sequence-compared) are reversed to prove genuine order-independence.
     const { plan } = sameSceneIdTwoSessionPlan();
     const forward = packageExport(packageInputFor({ ok: true, value: plan }));
     const reversedPlan = {
@@ -2714,7 +2822,6 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
         outputsA: [...plan.selection.outputsA].reverse(),
         outputsB: [...plan.selection.outputsB].reverse(),
       },
-      numbering: [...plan.numbering].reverse(),
     };
     const reversed = packageExport(packageInputFor({ ok: true, value: reversedPlan }));
     expect(forward.ok).toBe(true);

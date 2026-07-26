@@ -350,7 +350,21 @@ export function selectExportArtifacts(
 ): ExportAllowlistedSelection {
   const project = source.project as Project;
   const sessions = canonicalSessions(project, resolved.sessionIds);
-  const numberingByScene = new Map(numbering.map((entry) => [entry.sceneId, entry]));
+  // A `SceneId` is only guaranteed unique *within* its own session (EX §12),
+  // so a flat scene-only map collapses two different sessions' same-named
+  // scenes into one entry - the later session's numbering silently
+  // overwrites the earlier one's, misattributing scene numbers/labels
+  // across sessions. Keyed by the complete (sessionId, sceneId) identity
+  // instead.
+  const numberingBySessionAndScene = new Map<string, Map<string, ExportNumberingEntry>>();
+  for (const entry of numbering) {
+    let bySceneId = numberingBySessionAndScene.get(entry.sessionId);
+    if (!bySceneId) {
+      bySceneId = new Map<string, ExportNumberingEntry>();
+      numberingBySessionAndScene.set(entry.sessionId, bySceneId);
+    }
+    bySceneId.set(entry.sceneId, entry);
+  }
   const numberingByOutputA = new Map(numbering.map((entry) => [entry.outputAId, entry]));
   const selectedSessions: ExportSelectedSession[] = [];
   const selectedGroups: ExportSelectedGroup[] = [];
@@ -428,7 +442,7 @@ export function selectExportArtifacts(
 
     if (!restrictGroupContent && resolved.policy.outputA) {
       for (const scene of scenes) {
-        const entry = numberingByScene.get(scene.id);
+        const entry = numberingBySessionAndScene.get(session.id)?.get(scene.id);
         if (
           !entry ||
           !isPlainRecord(scene.outputA) ||
@@ -450,7 +464,7 @@ export function selectExportArtifacts(
 
     if (!restrictGroupContent && resolved.policy.outputB) {
       for (const scene of scenes) {
-        const entry = numberingByScene.get(scene.id);
+        const entry = numberingBySessionAndScene.get(session.id)?.get(scene.id);
         const output = scene.outputB;
         if (
           !entry ||
@@ -478,7 +492,7 @@ export function selectExportArtifacts(
 
     if (!restrictGroupContent && resolved.policy.executionPlans) {
       const phase1 = scenes.flatMap((scene) => {
-        const entry = numberingByScene.get(scene.id);
+        const entry = numberingBySessionAndScene.get(session.id)?.get(scene.id);
         if (
           !entry ||
           !isPlainRecord(scene.outputA) ||
@@ -489,7 +503,7 @@ export function selectExportArtifacts(
         return [{ sceneId: scene.id, outputAId: scene.outputA.id, label: entry.outputALabel }];
       });
       const phase2 = scenes.flatMap((scene) => {
-        const entry = numberingByScene.get(scene.id);
+        const entry = numberingBySessionAndScene.get(session.id)?.get(scene.id);
         const output = scene.outputB;
         if (
           !entry ||

@@ -23,7 +23,8 @@
     "verify:full": "npm run audit:full && npm run audit:prod && npm run typecheck && npm run lint && npm run format:check && npm run test && npm run verify:determinism && npm run build",
     "audit:full": "node scripts/npm-audit-retry.mjs full",
     "audit:prod": "node scripts/npm-audit-retry.mjs prod",
-    "hash:source-tree": "node scripts/source-tree-hash.mjs"
+    "hash:source-tree": "node scripts/source-tree-hash.mjs",
+    "verify:zip:external": "node scripts/verify-golden-zips-external.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",
