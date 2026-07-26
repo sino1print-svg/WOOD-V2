@@ -77,6 +77,129 @@ function outputSlugMap(plan: ExportPlan): Map<string, string> {
   return map;
 }
 
+const PAIR_FILE_ELIGIBLE_SCOPES = new Set(['pair', 'group', 'session', 'complete_project', 'all']);
+/** Scopes whose content policy never selects an Output A artifact for a scene that has a selected Output B - a real relationship still exists (via `sourceOutputAId`/numbering) but no A file is expected. */
+const B_ONLY_SCOPES = new Set(['output_b', 'group_b']);
+
+type OutputARecord = ExportPlan['selection']['outputsA'][number];
+type OutputBRecord = ExportPlan['selection']['outputsB'][number];
+type NumberingRecord = ExportPlan['numbering'][number];
+
+// Unit separator (0x1F) - never appears in a real SessionId/SceneId - used
+// only to prevent an accidental cross-identity collision when concatenating.
+const IDENTITY_KEY_SEPARATOR = String.fromCharCode(0x1f);
+
+/** `(sessionId, sceneId)` composite identity key - scene ids are only unique within a session (EX §12 Third Corrective F2). */
+function identityKey(sessionId: string, sceneId: string): string {
+  return sessionId + IDENTITY_KEY_SEPARATOR + sceneId;
+}
+
+function groupByIdentity<T extends { readonly sessionId: string; readonly sceneId: string }>(
+  items: readonly T[],
+): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    const key = identityKey(item.sessionId, item.sceneId);
+    const list = map.get(key);
+    if (list) list.push(item);
+    else map.set(key, [item]);
+  }
+  return map;
+}
+
+/**
+ * Fourth Corrective C1/C2: exact-cardinality, scope-aware relational
+ * validation over `plan.selection.outputsA`/`outputsB`/`plan.numbering`,
+ * replacing the prior first-match `.find()`-based checks (Third Corrective
+ * F1/F2), which silently accepted a selected Output B moved to another
+ * session/scene, a B with no matching A, duplicate selected A/B records, and
+ * a valid numbering row followed by a hostile duplicate (order-dependently).
+ *
+ * Every identity below is grouped by the complete `(sessionId, sceneId)` key
+ * before any comparison runs, so cardinality violations (more than one
+ * selected A, B, or numbering row for one identity) are counted rather than
+ * masked by whichever row a `.find()` happened to hit first - the result is
+ * independent of array order (a valid row followed by a hostile duplicate
+ * fails exactly the same way as the same two rows reversed).
+ *
+ * Scope-aware rules:
+ * - Pair-bearing scopes (`pair`, `group`, `session`, `complete_project`,
+ *   `all`): every selected Output B requires exactly one selected Output A
+ *   for the same identity, exactly one numbering row, and full ID agreement
+ *   among B.sourceOutputAId / A.id / numbering.outputAId / numbering.outputBId.
+ * - B-only scopes (`output_b`, `group_b`): the Output A artifact is
+ *   legitimately never selected, so it is not required to exist - but the
+ *   selected B must still have exactly one numbering row whose
+ *   outputAId/outputBId agree with B.sourceOutputAId/B.id.
+ * - Every selected Output A (any scope) requires exactly one numbering row
+ *   whose outputAId agrees with it - this is the A-only-scope rule
+ *   (`output_a`/`group_a`) but is safe to apply universally since it is
+ *   already implied for pair-bearing identities above.
+ * - Every selected Output A/B must belong to `plan.scope.sessionIds`, and -
+ *   when `plan.scope.sceneIds` is non-empty - to `plan.scope.sceneIds`.
+ */
+export function hasRelationalIntegrityViolation(plan: ExportPlan): boolean {
+  const sessionIdSet = new Set<string>(plan.scope.sessionIds);
+  const sceneIdSet = new Set<string>(plan.scope.sceneIds);
+  const sceneScopeIsBounded = plan.scope.sceneIds.length > 0;
+
+  const outOfScope = (sessionId: string, sceneId: string): boolean =>
+    !sessionIdSet.has(sessionId) || (sceneScopeIsBounded && !sceneIdSet.has(sceneId));
+
+  for (const outputA of plan.selection.outputsA) {
+    if (outOfScope(outputA.sessionId, outputA.sceneId)) return true;
+  }
+  for (const outputB of plan.selection.outputsB) {
+    if (outOfScope(outputB.sessionId, outputB.sceneId)) return true;
+  }
+
+  const outputsAByIdentity = groupByIdentity<OutputARecord>(plan.selection.outputsA);
+  const outputsBByIdentity = groupByIdentity<OutputBRecord>(plan.selection.outputsB);
+  const numberingByIdentity = groupByIdentity<NumberingRecord>(plan.numbering);
+
+  for (const list of outputsAByIdentity.values()) {
+    if (list.length > 1) return true;
+  }
+  for (const list of outputsBByIdentity.values()) {
+    if (list.length > 1) return true;
+  }
+
+  const isPairBearing = PAIR_FILE_ELIGIBLE_SCOPES.has(plan.scope.scopeDetail);
+  const isBOnly = B_ONLY_SCOPES.has(plan.scope.scopeDetail);
+
+  for (const [key, bList] of outputsBByIdentity) {
+    const outputB = bList[0]!;
+    const numberingList = numberingByIdentity.get(key) ?? [];
+    if (numberingList.length !== 1) return true;
+    const numberingEntry = numberingList[0]!;
+    if (numberingEntry.outputBId !== outputB.id) return true;
+    if (numberingEntry.outputAId !== outputB.sourceOutputAId) return true;
+
+    if (isPairBearing) {
+      const aList = outputsAByIdentity.get(key) ?? [];
+      if (aList.length !== 1) return true;
+      const outputA = aList[0]!;
+      if (outputB.sourceOutputAId !== outputA.id) return true;
+      if (numberingEntry.outputAId !== outputA.id) return true;
+    } else if (!isBOnly) {
+      // Any non-pair-bearing, non-B-only scope should never select an
+      // Output B at all under the current content-policy design; if one
+      // somehow appears, treat it as relationally unverifiable and fail
+      // closed rather than silently accept it.
+      return true;
+    }
+  }
+
+  for (const [key, aList] of outputsAByIdentity) {
+    const outputA = aList[0]!;
+    const numberingList = numberingByIdentity.get(key) ?? [];
+    if (numberingList.length !== 1) return true;
+    if (numberingList[0]!.outputAId !== outputA.id) return true;
+  }
+
+  return false;
+}
+
 /**
  * Pair-execution files must never be inferred from `plan.numbering` alone -
  * numbering always carries a scene's real `outputBId` whenever the *source*
@@ -87,18 +210,15 @@ function outputSlugMap(plan: ExportPlan): Map<string, string> {
  * only emit one where Output A and Output B are both genuinely selected for
  * that scene, Output B's `sourceOutputAId` actually points at that selected
  * Output A, and `plan.numbering` independently records the same A/B
- * relationship (EX §12 Second Corrective C1: a shape-valid but hostile or
- * partial plan - missing B, or B linked to a different A - must never leak a
- * pair file merely because `scopeDetail === 'pair'`).
+ * relationship.
  *
- * Every lookup below is keyed on the complete `(sessionId, sceneId)` identity,
- * never `sceneId` alone (EX §12 Third Corrective F2): scene IDs are only
- * guaranteed unique within a session, so a shape-valid hostile plan that
- * reuses a scene ID across two sessions must never let one session's real
- * Output A/B or numbering row authorize a pair file in another session.
+ * By the time this runs, `hasRelationalIntegrityViolation` has already
+ * rejected the plan outright if any identity had more than one selected A,
+ * B, or numbering row (Fourth Corrective C3), so a validated identity here
+ * is guaranteed to have at most one of each - this function only needs to
+ * confirm the single row's own consistency, never resolve ambiguity among
+ * duplicates.
  */
-const PAIR_FILE_ELIGIBLE_SCOPES = new Set(['pair', 'group', 'session', 'complete_project', 'all']);
-
 function shouldEmitPairFile(
   plan: ExportPlan,
   sessionId: ExportPlan['numbering'][number]['sessionId'],
@@ -118,36 +238,6 @@ function shouldEmitPairFile(
   );
   if (numberingEntry === undefined) return false;
   return numberingEntry.outputAId === outputA.id && numberingEntry.outputBId === outputB.id;
-}
-
-/**
- * Third Corrective F1: a relationally-corrupt plan must fail the whole
- * packaging operation, not merely suppress `prompt_pair` while still
- * emitting an Output B prompt under a false source relationship. For every
- * selected Output B whose (sessionId, sceneId) also has a selected Output A
- * (scopes that never select Output A for that scene - e.g. `output_b`,
- * `group_b` - are unaffected, since there is nothing to mismatch against),
- * `outputB.sourceOutputAId` must equal that Output A's id, and
- * `plan.numbering` must independently corroborate the same (outputAId,
- * outputBId) pair for that exact (sessionId, sceneId). Reuses this same
- * complete-identity matching (never `sceneId` alone) as `shouldEmitPairFile`.
- */
-export function hasBrokenOutputLinkage(plan: ExportPlan): boolean {
-  for (const outputB of plan.selection.outputsB) {
-    const outputA = plan.selection.outputsA.find(
-      (item) => item.sessionId === outputB.sessionId && item.sceneId === outputB.sceneId,
-    );
-    if (outputA === undefined) continue;
-    if (outputB.sourceOutputAId !== outputA.id) return true;
-    const numberingEntry = plan.numbering.find(
-      (item) => item.sessionId === outputB.sessionId && item.sceneId === outputB.sceneId,
-    );
-    if (numberingEntry === undefined) return true;
-    if (numberingEntry.outputAId !== outputA.id || numberingEntry.outputBId !== outputB.id) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /** Builds every content file. Returns `null` on the first unrecoverable resource-limit failure. */
@@ -286,7 +376,17 @@ export function buildPackageContentEntries(
     const sessionNumbering = plan.numbering.filter(
       (item) => item.sessionId === sessionId && shouldEmitPairFile(plan, sessionId, item.sceneId),
     );
+    // Fourth Corrective C3: consume the already-validated relation directly
+    // rather than an ambiguous global filter/find. `hasRelationalIntegrityViolation`
+    // has already rejected any plan carrying more than one numbering row per
+    // identity, so this Set can never actually drop a legitimate row - it is
+    // defense-in-depth so a single validated identity can never emit more than
+    // one collision-suffixed pair file even if that upstream gate regresses.
+    const emittedPairIdentities = new Set<string>();
     for (const entry of sessionNumbering) {
+      const identity = identityKey(entry.sessionId, entry.sceneId);
+      if (emittedPairIdentities.has(identity)) continue;
+      emittedPairIdentities.add(identity);
       const built = buildPairExecutionMarkdown(entry, contentLimits);
       if (built === null) return overflow('packaging.pairExecution');
       files.push({

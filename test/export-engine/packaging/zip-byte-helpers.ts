@@ -139,3 +139,173 @@ export function crc32Of(bytes: Uint8Array): number {
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
+
+const TEXT_ENCODER = new TextEncoder();
+
+/**
+ * Builds one fixed-format local-file-header-plus-data block (matches the
+ * `EXPECTED_*` constants `zip-verifier.ts` enforces: version needed 20,
+ * general-purpose flag 0x0800, store compression, DOS date 0x0021/time
+ * 0x0000, no extra field). Store method only, so compressed size ===
+ * uncompressed size and `content` is written verbatim.
+ */
+export function buildLocalBlock(name: string, content: Uint8Array): Uint8Array {
+  const nameBytes = TEXT_ENCODER.encode(name);
+  const block = new Uint8Array(30 + nameBytes.length + content.length);
+  writeU32(block, 0, 0x04034b50);
+  writeU16(block, 4, 20);
+  writeU16(block, 6, 0x0800);
+  writeU16(block, 8, 0);
+  writeU16(block, 10, 0x0000);
+  writeU16(block, 12, 0x0021);
+  writeU32(block, 14, crc32Of(content));
+  writeU32(block, 18, content.length);
+  writeU32(block, 22, content.length);
+  writeU16(block, 26, nameBytes.length);
+  writeU16(block, 28, 0);
+  block.set(nameBytes, 30);
+  block.set(content, 30 + nameBytes.length);
+  return block;
+}
+
+export interface RawCentralRecord {
+  readonly name: string;
+  readonly crc: number;
+  readonly size: number;
+  readonly localHeaderOffset: number;
+}
+
+function buildCentralRecord(record: RawCentralRecord): Uint8Array {
+  const nameBytes = TEXT_ENCODER.encode(record.name);
+  const header = new Uint8Array(46 + nameBytes.length);
+  writeU32(header, 0, 0x02014b50);
+  writeU16(header, 4, 0x0014);
+  writeU16(header, 6, 20);
+  writeU16(header, 8, 0x0800);
+  writeU16(header, 10, 0);
+  writeU16(header, 12, 0x0000);
+  writeU16(header, 14, 0x0021);
+  writeU32(header, 16, record.crc);
+  writeU32(header, 20, record.size);
+  writeU32(header, 24, record.size);
+  writeU16(header, 28, nameBytes.length);
+  writeU16(header, 30, 0);
+  writeU16(header, 32, 0);
+  writeU16(header, 34, 0);
+  writeU16(header, 36, 0);
+  writeU32(header, 38, 0);
+  writeU32(header, 42, record.localHeaderOffset);
+  header.set(nameBytes, 46);
+  return header;
+}
+
+/**
+ * Assembles a complete ZIP archive from raw physical bytes (laid out
+ * back-to-back starting at byte 0, in array order) and an independent list
+ * of central-directory records that each freely declare their own
+ * name/crc/size and may reference *any* byte offset into that physical
+ * region - including an offset that reuses, overlaps, or physically
+ * precedes another record's. `writeDeterministicZip` can never produce such
+ * an archive (it always writes exactly one contiguous local block per
+ * entry, in central order); this exists purely to construct structurally
+ * hostile-but-per-entry-consistent archives for the verifier's canonical
+ * local/central physical-order checks (Fourth Corrective C4).
+ */
+export function assembleRawZip(
+  physicalBytes: readonly Uint8Array[],
+  centralRecords: readonly RawCentralRecord[],
+): Uint8Array {
+  const localRegionLength = physicalBytes.reduce((sum, block) => sum + block.length, 0);
+  const centralBlocks = centralRecords.map((record) => buildCentralRecord(record));
+  const centralLength = centralBlocks.reduce((sum, block) => sum + block.length, 0);
+  const bytes = new Uint8Array(localRegionLength + centralLength + 22);
+
+  let cursor = 0;
+  for (const block of physicalBytes) {
+    bytes.set(block, cursor);
+    cursor += block.length;
+  }
+  const centralDirectoryOffset = cursor;
+  for (const block of centralBlocks) {
+    bytes.set(block, cursor);
+    cursor += block.length;
+  }
+  const eocdOffset = cursor;
+  writeU32(bytes, eocdOffset, 0x06054b50);
+  writeU16(bytes, eocdOffset + 4, 0);
+  writeU16(bytes, eocdOffset + 6, 0);
+  writeU16(bytes, eocdOffset + 8, centralRecords.length);
+  writeU16(bytes, eocdOffset + 10, centralRecords.length);
+  writeU32(bytes, eocdOffset + 12, centralLength);
+  writeU32(bytes, eocdOffset + 16, centralDirectoryOffset);
+  writeU16(bytes, eocdOffset + 20, 0);
+  return bytes;
+}
+
+interface LocalBlockInfo {
+  readonly centralOffset: number;
+  readonly localHeaderOffset: number;
+  readonly length: number;
+}
+
+function localBlockLength(bytes: Uint8Array, localHeaderOffset: number): number {
+  const nameLength = readU16(bytes, localHeaderOffset + 26);
+  const extraLength = readU16(bytes, localHeaderOffset + 28);
+  const compressedSize = readU32(bytes, localHeaderOffset + 18);
+  return 30 + nameLength + extraLength + compressedSize;
+}
+
+function collectLocalBlocks(bytes: Uint8Array): LocalBlockInfo[] {
+  const blocks: LocalBlockInfo[] = [];
+  forEachCentralHeaderOffset(bytes, (centralOffset) => {
+    const localHeaderOffset = readU32(bytes, centralOffset + 42);
+    blocks.push({
+      centralOffset,
+      localHeaderOffset,
+      length: localBlockLength(bytes, localHeaderOffset),
+    });
+  });
+  return blocks;
+}
+
+/**
+ * Physically repacks a canonical archive's local-entry byte blocks into
+ * `newOrder` (a permutation of indices into the blocks' *canonical*
+ * central-directory order), then repairs every central record's
+ * `localHeaderOffset` to point at its entry's new physical position -
+ * leaving the central directory's own record order, and every entry's own
+ * recorded fields (name/crc/size/flag/timestamp), completely untouched.
+ * Reproduces an archive whose central directory is still in strict
+ * canonical path order and whose entries are each individually
+ * well-formed, but whose physical local-entry byte layout no longer
+ * matches that canonical order (Fourth Corrective C4).
+ */
+export function reorderLocalBlocks(zipBytes: Uint8Array, newOrder: readonly number[]): Uint8Array {
+  const blocks = collectLocalBlocks(zipBytes);
+  if (newOrder.length !== blocks.length) {
+    throw new Error('newOrder length must match the number of central-directory entries');
+  }
+  const firstLocalOffset = Math.min(...blocks.map((block) => block.localHeaderOffset));
+  const regionLength = blocks.reduce((sum, block) => sum + block.length, 0);
+
+  const combined = zipBytes.slice();
+  const reorderedRegion = new Uint8Array(regionLength);
+  const newOffsetByOriginalIndex = new Map<number, number>();
+  let cursor = 0;
+  for (const originalIndex of newOrder) {
+    const block = blocks[originalIndex]!;
+    reorderedRegion.set(
+      zipBytes.subarray(block.localHeaderOffset, block.localHeaderOffset + block.length),
+      cursor,
+    );
+    newOffsetByOriginalIndex.set(originalIndex, firstLocalOffset + cursor);
+    cursor += block.length;
+  }
+  combined.set(reorderedRegion, firstLocalOffset);
+
+  blocks.forEach((block, index) => {
+    writeU32(combined, block.centralOffset + 42, newOffsetByOriginalIndex.get(index)!);
+  });
+
+  return combined;
+}

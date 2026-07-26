@@ -22,6 +22,7 @@ import {
   type OutputAId,
   type OutputBId,
   type Project,
+  type SceneId,
   type SessionId,
 } from '../../../src/shared/domain-model';
 import { APP_CONFIG } from '../../../src/config/app-config';
@@ -34,6 +35,8 @@ import {
 } from '../fixtures';
 import { createPackageFixture, packageInputFromFormatter } from './fixtures';
 import {
+  assembleRawZip,
+  buildLocalBlock,
   crc32Of,
   findCentralHeaderOffset,
   findEocdOffset,
@@ -41,9 +44,11 @@ import {
   localHeaderOffsetFor,
   readU16,
   readU32,
+  reorderLocalBlocks,
   writeU16,
   writeU32,
 } from './zip-byte-helpers';
+import { parseZip } from '../../../src/export/packaging/zip-verifier';
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
 
@@ -457,7 +462,14 @@ describe('Third Corrective F2 - pair eligibility keyed by complete session+scene
     expect(session01Kinds).toContain('prompt_b');
   });
 
-  it('duplicate/conflicting numbering rows for the same reused scene id across sessions do not cross-contaminate either session', () => {
+  it('session 2 numbering forged to reference session 1 real output ids, with no Output A or B selected for session 2, does not cross-contaminate either session', () => {
+    // Fourth Corrective audit F4: despite the title this test carried before,
+    // its two numbering rows belong to two DIFFERENT session identities, not
+    // one reused identity - this is cross-session forgery of a numbering row
+    // that has no corresponding selected Output A/B at all for session 2 (so
+    // it can never drive pair-file emission on its own), not a true
+    // same-identity duplicate. See the "Fourth Corrective C1/C2" describe
+    // block below for the actual same-identity duplicate-numbering-row tests.
     const { hostilePlan } = crossSessionHostilePlan();
     // Additionally corrupt session 2's numbering row to point at session 1's
     // real output ids directly (an even more direct forgery attempt).
@@ -488,6 +500,374 @@ describe('Third Corrective F2 - pair eligibility keyed by complete session+scene
       .filter((entry) => entry.path.includes('/session-02/'))
       .map((entry) => entry.kind);
     expect(session02Kinds).not.toContain('prompt_pair');
+  });
+});
+
+describe('Fourth Corrective C1/C2 - exact relational cardinality and B-only linkage validation', () => {
+  function singleSessionPairPlan() {
+    const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: CANONICAL_SCOPES[2]! });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    return structuredClone(planResult.value);
+  }
+
+  function singleSessionOutputBOnlyPlan() {
+    const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: CANONICAL_SCOPES[1]! });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    expect(planResult.value.selection.outputsA).toHaveLength(0);
+    expect(planResult.value.selection.outputsB).toHaveLength(1);
+    return structuredClone(planResult.value);
+  }
+
+  /** Two real sessions, each with its own distinct scene, fully valid and mutually independent A/B pair. */
+  function twoSessionPairPlan() {
+    const project = structuredClone(CANONICAL_PROJECT) as Project;
+    const original = project.sessions[CANONICAL_SESSION_ID]!;
+    const originalScene = original.scenes[CANONICAL_SCENE_ID]!;
+    const secondSessionId = 'session-second' as SessionId;
+    const secondSceneId = 'scene-second' as SceneId;
+    const secondOutputAId = 'output-a-second' as OutputAId;
+    const secondOutputBId = 'output-b-second' as OutputBId;
+    const secondScene = {
+      ...originalScene,
+      id: secondSceneId,
+      sessionId: secondSessionId,
+      outputA: { ...originalScene.outputA, id: secondOutputAId, sceneId: secondSceneId },
+      outputB: {
+        ...originalScene.outputB!,
+        id: secondOutputBId,
+        sceneId: secondSceneId,
+        sourceOutputAId: secondOutputAId,
+      },
+    };
+    const secondGroupId = 'group-second' as GroupId;
+    const secondSession = {
+      ...original,
+      id: secondSessionId,
+      scenes: { [secondSceneId]: secondScene },
+      sceneOrder: [secondSceneId],
+      groups: {
+        [secondGroupId]: {
+          ...Object.values(original.groups)[0]!,
+          id: secondGroupId,
+          sessionId: secondSessionId,
+          sceneIds: [secondSceneId],
+        },
+      },
+      cover: {
+        ...original.cover!,
+        id: 'cover-second' as CoverId,
+        sessionId: secondSessionId,
+        sourceSaleImageIds: [secondOutputAId],
+      },
+    };
+    project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
+    project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
+
+    const planResult = createExportPlan({
+      ...CANONICAL_EXPORT_INPUT,
+      source: { ...CANONICAL_EXPORT_INPUT.source, project },
+      scope: { baseScope: ExportScope.All, scopeDetail: 'complete_project' },
+    });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    return { plan: structuredClone(planResult.value), secondSessionId, secondSceneId };
+  }
+
+  function expectRelationalFailure(plan: ReturnType<typeof singleSessionPairPlan>): void {
+    const result = packageExport(packageInputFor({ ok: true, value: plan }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
+  }
+
+  describe('pair-bearing scopes', () => {
+    it('Output B moved to a different (but real, in-scope) session: typed failure', () => {
+      const { plan, secondSessionId } = twoSessionPairPlan();
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsB: plan.selection.outputsB.map((outputB) =>
+            outputB.sessionId === secondSessionId
+              ? { ...outputB, sessionId: CANONICAL_SESSION_ID }
+              : outputB,
+          ),
+        },
+      };
+      expectRelationalFailure(mutated);
+    });
+
+    it('Output B moved to a different (but real, in-scope) scene: typed failure', () => {
+      const { plan, secondSessionId } = twoSessionPairPlan();
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsB: plan.selection.outputsB.map((outputB) =>
+            outputB.sessionId === secondSessionId
+              ? { ...outputB, sceneId: CANONICAL_SCENE_ID }
+              : outputB,
+          ),
+        },
+      };
+      expectRelationalFailure(mutated);
+    });
+
+    it('Output B present in pair scope with the selected Output A removed entirely: typed failure', () => {
+      const plan = singleSessionPairPlan();
+      expectRelationalFailure({ ...plan, selection: { ...plan.selection, outputsA: [] } });
+    });
+
+    it('duplicate selected Output A for the same identity: typed failure', () => {
+      const plan = singleSessionPairPlan();
+      const originalA = plan.selection.outputsA[0]!;
+      const duplicateA = { ...originalA, id: 'output-a-duplicate-hostile-id' as OutputAId };
+      expectRelationalFailure({
+        ...plan,
+        selection: { ...plan.selection, outputsA: [originalA, duplicateA] },
+      });
+    });
+
+    it('duplicate selected Output B for the same identity: typed failure', () => {
+      const plan = singleSessionPairPlan();
+      const originalB = plan.selection.outputsB[0]!;
+      const duplicateB = { ...originalB, id: 'output-b-duplicate-hostile-id' as OutputBId };
+      expectRelationalFailure({
+        ...plan,
+        selection: { ...plan.selection, outputsB: [originalB, duplicateB] },
+      });
+    });
+
+    it('missing numbering row for a selected pair: typed failure', () => {
+      const plan = singleSessionPairPlan();
+      expectRelationalFailure({ ...plan, numbering: [] });
+    });
+
+    it('duplicate identical numbering row for the same identity: typed failure', () => {
+      const plan = singleSessionPairPlan();
+      const originalEntry = plan.numbering[0]!;
+      expectRelationalFailure({ ...plan, numbering: [originalEntry, { ...originalEntry }] });
+    });
+
+    it('valid numbering row followed by a conflicting duplicate: typed failure', () => {
+      const plan = singleSessionPairPlan();
+      const originalEntry = plan.numbering[0]!;
+      const conflictingEntry = {
+        ...originalEntry,
+        outputAId: 'output-a-conflicting-hostile-id' as OutputAId,
+        outputBId: 'output-b-conflicting-hostile-id' as OutputBId,
+      };
+      expectRelationalFailure({ ...plan, numbering: [originalEntry, conflictingEntry] });
+    });
+
+    it('the same valid+conflicting numbering rows in reverse order: identical typed failure (order-independent)', () => {
+      const plan = singleSessionPairPlan();
+      const originalEntry = plan.numbering[0]!;
+      const conflictingEntry = {
+        ...originalEntry,
+        outputAId: 'output-a-conflicting-hostile-id' as OutputAId,
+        outputBId: 'output-b-conflicting-hostile-id' as OutputBId,
+      };
+      const forward = packageExport(
+        packageInputFor({
+          ok: true,
+          value: { ...plan, numbering: [originalEntry, conflictingEntry] },
+        }),
+      );
+      const reversed = packageExport(
+        packageInputFor({
+          ok: true,
+          value: { ...plan, numbering: [conflictingEntry, originalEntry] },
+        }),
+      );
+      expect(forward.ok).toBe(false);
+      expect(reversed.ok).toBe(false);
+      if (forward.ok || reversed.ok) return;
+      expect(forward.failures.map((failure) => failure.code)).toEqual(
+        reversed.failures.map((failure) => failure.code),
+      );
+      expect(forward.failures[0]!.code).toBe('EXPORT_LINK_001');
+    });
+
+    it('numbering.outputAId mismatch (distinct from an outputBId mismatch): typed failure', () => {
+      const plan = singleSessionPairPlan();
+      expectRelationalFailure({
+        ...plan,
+        numbering: plan.numbering.map((entry) => ({
+          ...entry,
+          outputAId: 'output-a-unrelated-hostile-id' as OutputAId,
+        })),
+      });
+    });
+
+    it('a selected output whose session is outside plan.scope.sessionIds entirely: typed failure', () => {
+      const plan = singleSessionPairPlan();
+      expectRelationalFailure({
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsA: plan.selection.outputsA.map((outputA) => ({
+            ...outputA,
+            sessionId: 'session-totally-unrelated' as SessionId,
+          })),
+        },
+      });
+    });
+
+    it('a selected output whose scene is outside a non-empty plan.scope.sceneIds: typed failure', () => {
+      const plan = singleSessionPairPlan();
+      expect(plan.scope.sceneIds.length).toBeGreaterThan(0);
+      expectRelationalFailure({
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsA: plan.selection.outputsA.map((outputA) => ({
+            ...outputA,
+            sceneId: 'scene-totally-unrelated' as SceneId,
+          })),
+        },
+      });
+    });
+  });
+
+  describe('B-only scopes (output_b/group_b)', () => {
+    it('false sourceOutputAId: typed failure', () => {
+      const plan = singleSessionOutputBOnlyPlan();
+      expectRelationalFailure({
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsB: plan.selection.outputsB.map((outputB) => ({
+            ...outputB,
+            sourceOutputAId: 'output-a-unrelated-hostile-id' as OutputAId,
+          })),
+        },
+      });
+    });
+
+    it('wrong numbering.outputAId (disagrees with the real sourceOutputAId): typed failure', () => {
+      const plan = singleSessionOutputBOnlyPlan();
+      expectRelationalFailure({
+        ...plan,
+        numbering: plan.numbering.map((entry) => ({
+          ...entry,
+          outputAId: 'output-a-unrelated-hostile-id' as OutputAId,
+        })),
+      });
+    });
+
+    it('wrong numbering.outputBId: typed failure', () => {
+      const plan = singleSessionOutputBOnlyPlan();
+      expectRelationalFailure({
+        ...plan,
+        numbering: plan.numbering.map((entry) => ({
+          ...entry,
+          outputBId: 'output-b-unrelated-hostile-id' as OutputBId,
+        })),
+      });
+    });
+
+    it('missing numbering row: typed failure', () => {
+      const plan = singleSessionOutputBOnlyPlan();
+      expectRelationalFailure({ ...plan, numbering: [] });
+    });
+
+    it('duplicate/conflicting numbering row for the same identity: typed failure', () => {
+      const plan = singleSessionOutputBOnlyPlan();
+      const originalEntry = plan.numbering[0]!;
+      expectRelationalFailure({ ...plan, numbering: [originalEntry, { ...originalEntry }] });
+    });
+  });
+
+  describe('cross-session reused-identity scopes', () => {
+    it('two real sessions each with their own valid, independent pair: both succeed, no cross-contamination', () => {
+      const { plan } = twoSessionPairPlan();
+      const result = packageExport(packageInputFor({ ok: true, value: plan }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const kinds = (folder: string) =>
+        result.entries.filter((entry) => entry.path.includes(`/${folder}/`)).map((e) => e.kind);
+      for (const folder of ['session-01', 'session-02']) {
+        expect(kinds(folder)).toContain('prompt_a');
+        expect(kinds(folder)).toContain('prompt_b');
+        expect(kinds(folder)).toContain('prompt_pair');
+      }
+    });
+
+    it('session order reversed: identical (successful) result regardless of array insertion order', () => {
+      const { plan } = twoSessionPairPlan();
+      const forward = packageExport(packageInputFor({ ok: true, value: plan }));
+      const reversedPlan = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsA: [...plan.selection.outputsA].reverse(),
+          outputsB: [...plan.selection.outputsB].reverse(),
+        },
+        numbering: [...plan.numbering].reverse(),
+      };
+      const reversed = packageExport(packageInputFor({ ok: true, value: reversedPlan }));
+      expect(forward.ok).toBe(true);
+      expect(reversed.ok).toBe(true);
+      if (!forward.ok || !reversed.ok) return;
+      // Aggregate, whole-project files (README/manifest/checksums) legitimately
+      // document sessions in the order they appear in the plan's arrays, so
+      // reversing that order changes their listing text (and therefore their
+      // checksum) without indicating any relational-integrity problem. Every
+      // other file is scoped to a single session+scene by a `.filter`/`.find`
+      // keyed on identity, not by array position, so its content - and
+      // checksum - must stay byte-identical regardless of insertion order.
+      const AGGREGATE_KINDS = new Set(['readme', 'manifest', 'checksums']);
+      const normalize = (entry: (typeof forward.entries)[number]) =>
+        AGGREGATE_KINDS.has(entry.kind)
+          ? { path: entry.path, kind: entry.kind, byteLength: entry.byteLength }
+          : entry;
+      const sortByPath = (entries: typeof forward.entries) =>
+        [...entries].map(normalize).sort((a, b) => (a.path < b.path ? -1 : 1));
+      expect(sortByPath(reversed.entries)).toEqual(sortByPath(forward.entries));
+    });
+
+    it('session 2 Output B points at session 1 Output A (both sessions otherwise real and independent): typed failure', () => {
+      const { plan, secondSessionId } = twoSessionPairPlan();
+      const session1OutputA = plan.selection.outputsA.find(
+        (item) => item.sessionId === CANONICAL_SESSION_ID,
+      )!;
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsB: plan.selection.outputsB.map((outputB) =>
+            outputB.sessionId === secondSessionId
+              ? { ...outputB, sourceOutputAId: session1OutputA.id }
+              : outputB,
+          ),
+        },
+      };
+      expectRelationalFailure(mutated);
+    });
+
+    it('session 2 numbering forged to reference session 1 ids while session 2 Output B is still genuinely selected: typed failure', () => {
+      const { plan, secondSessionId } = twoSessionPairPlan();
+      const session1Numbering = plan.numbering.find(
+        (item) => item.sessionId === CANONICAL_SESSION_ID,
+      )!;
+      const mutated = {
+        ...plan,
+        numbering: plan.numbering.map((entry) =>
+          entry.sessionId === secondSessionId
+            ? {
+                ...entry,
+                outputAId: session1Numbering.outputAId,
+                outputBId: session1Numbering.outputBId,
+              }
+            : entry,
+        ),
+      };
+      expectRelationalFailure(mutated);
+    });
   });
 });
 
@@ -1377,5 +1757,176 @@ describe('First Corrective F10 - semantic calendar validation', () => {
       const result = packageExport({ ...base, createdAt: valid });
       expect(result.ok).toBe(true);
     }
+  });
+});
+
+describe('Fourth Corrective C4 - canonical local/central physical order enforcement', () => {
+  it('accepts a real multi-entry canonical archive unchanged (baseline)', () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries.length).toBeGreaterThanOrEqual(4);
+    expect(verifyPackageZip(result.zipBytes, ledgerFor(result)).ok).toBe(true);
+  });
+
+  it('rejects two interior local entries physically swapped, even though every entry stays individually well-formed and full byte coverage holds', () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const entryCount = result.entries.length;
+    expect(entryCount).toBeGreaterThanOrEqual(4);
+    // Swap the physical position of the two interior entries (indices 1 and
+    // 2 in central/path order) - the very first entry stays at offset 0 (so
+    // the archive-prefix check alone can't explain the rejection) and total
+    // byte coverage is unchanged (so the gap/hidden-bytes checks alone can't
+    // explain it either).
+    const newOrder = [0, 2, 1, ...Array.from({ length: entryCount - 3 }, (_, i) => i + 3)];
+    const swapped = reorderLocalBlocks(result.zipBytes, newOrder);
+    const verification = verifyPackageZip(swapped, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+  });
+
+  it('rejects every local entry physically reversed, even though central-directory record order and total byte coverage are both untouched', () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const entryCount = result.entries.length;
+    expect(entryCount).toBeGreaterThanOrEqual(4);
+    const reversedOrder = Array.from({ length: entryCount }, (_, i) => entryCount - 1 - i);
+    const reversed = reorderLocalBlocks(result.zipBytes, reversedOrder);
+    const verification = verifyPackageZip(reversed, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+  });
+
+  it('a real unzip-compatible tool may tolerate a physically-reordered archive, but the internal verifier must still reject it', () => {
+    // Central-directory bookkeeping alone (name/offset/size/crc) is enough
+    // for many real ZIP readers to locate and extract every entry correctly
+    // regardless of physical local-entry byte order - which is exactly why
+    // canonical *physical* order must be enforced independently in-process,
+    // never assumed from "a permissive external tool accepted it".
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const entryCount = result.entries.length;
+    const reversedOrder = Array.from({ length: entryCount }, (_, i) => entryCount - 1 - i);
+    const reversed = reorderLocalBlocks(result.zipBytes, reversedOrder);
+    // Every entry's own central-directory bookkeeping (name, crc, size) is
+    // still fully self-consistent with the (relocated) local header it
+    // points at - a reader that trusts the central directory can still
+    // extract every file's correct bytes. Confirmed here by reusing the
+    // same CRC recomputation `parseZip`'s own per-entry checks perform,
+    // walking strictly by central-directory offset rather than assuming
+    // physical order.
+    for (const entry of result.entries) {
+      const centralOffset = findCentralHeaderOffset(reversed, entry.path.split('/').pop()!);
+      const localOffset = localHeaderOffsetFor(reversed, centralOffset);
+      const nameLength = readU16(reversed, localOffset + 26);
+      const size = readU32(reversed, centralOffset + 24);
+      const dataStart = localOffset + 30 + nameLength;
+      const data = reversed.slice(dataStart, dataStart + size);
+      expect(crc32Of(data)).toBe(readU32(reversed, centralOffset + 16));
+    }
+    // Yet the internal verifier rejects it outright.
+    const verification = verifyPackageZip(reversed, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+  });
+
+  it('reaches exactly local_offset_reused for two central records that both reference the same physical local entry', () => {
+    const sharedContent = encode('shared content');
+    const shared = buildLocalBlock('shared.txt', sharedContent);
+    const sharedCrc = crc32Of(sharedContent);
+    const bytes = assembleRawZip(
+      [shared],
+      [
+        {
+          name: 'shared.txt',
+          crc: sharedCrc,
+          size: sharedContent.length,
+          localHeaderOffset: 0,
+        },
+        {
+          name: 'shared.txt',
+          crc: sharedCrc,
+          size: sharedContent.length,
+          localHeaderOffset: 0,
+        },
+      ],
+    );
+    const parsed = parseZip(bytes);
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.reason).toBe('local_offset_reused');
+  });
+
+  it("reaches exactly local_entry_overlap for a second entry whose local header is embedded inside the first entry's own data payload", () => {
+    const bContent = encode('B content');
+    const bBlock = buildLocalBlock('b.txt', bContent);
+    // "a.txt"'s own declared content literally contains a second, fully
+    // valid local-file structure ("b.txt"'s) as a byte substring - a
+    // genuine physical overlap that neither entry's own per-entry header
+    // checks can see on their own, since both entries independently
+    // self-reconcile (name/crc/size all match their own central record).
+    const aContent = new Uint8Array(4 + bBlock.length);
+    aContent.set(encode('AAAA'), 0);
+    aContent.set(bBlock, 4);
+    const aBlock = buildLocalBlock('a.txt', aContent);
+    const bOffsetInArchive = 30 + encode('a.txt').length + 4;
+    const bytes = assembleRawZip(
+      [aBlock],
+      [
+        { name: 'a.txt', crc: crc32Of(aContent), size: aContent.length, localHeaderOffset: 0 },
+        {
+          name: 'b.txt',
+          crc: crc32Of(bContent),
+          size: bContent.length,
+          localHeaderOffset: bOffsetInArchive,
+        },
+      ],
+    );
+    const parsed = parseZip(bytes);
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.reason).toBe('local_entry_overlap');
+  });
+
+  it('reaches exactly local_order_mismatch when a later central entry physically precedes an earlier one, with no reuse or overlap between them', () => {
+    const cContent = encode('C content');
+    const cBlock = buildLocalBlock('c.txt', cContent);
+    // "a.txt" embeds "c.txt"'s complete local structure inside its own data
+    // (same technique as the overlap case above); "b.txt" is placed
+    // immediately - contiguously, canonically - after "a.txt" ends. Central
+    // order is a, b, c: the (a,b) pair is perfectly canonical (no gap, no
+    // overlap), so the very first anomaly the pairwise walk can encounter
+    // is (b,c) - and there, "c.txt"'s physical offset falls *before*
+    // "b.txt"'s, with no shared offset and no dataEnd overlap between them.
+    const aContent = new Uint8Array(4 + cBlock.length);
+    aContent.set(encode('AAAA'), 0);
+    aContent.set(cBlock, 4);
+    const aBlock = buildLocalBlock('a.txt', aContent);
+    const bContent = encode('B content');
+    const bBlock = buildLocalBlock('b.txt', bContent);
+    const cOffsetInArchive = 30 + encode('a.txt').length + 4;
+    const bytes = assembleRawZip(
+      [aBlock, bBlock],
+      [
+        { name: 'a.txt', crc: crc32Of(aContent), size: aContent.length, localHeaderOffset: 0 },
+        {
+          name: 'b.txt',
+          crc: crc32Of(bContent),
+          size: bContent.length,
+          localHeaderOffset: aBlock.length,
+        },
+        {
+          name: 'c.txt',
+          crc: crc32Of(cContent),
+          size: cContent.length,
+          localHeaderOffset: cOffsetInArchive,
+        },
+      ],
+    );
+    const parsed = parseZip(bytes);
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.reason).toBe('local_order_mismatch');
   });
 });

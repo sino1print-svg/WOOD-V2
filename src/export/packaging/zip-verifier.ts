@@ -267,23 +267,32 @@ export function parseZip(bytes: Uint8Array): ZipParseResult {
       return { ok: false, reason: 'trailing_central_directory_bytes' };
     }
 
-    // Third Corrective F3: the local-entries region (byte 0 through
-    // centralDirectoryOffset) must be covered *exactly* by the entries'
-    // own local byte ranges, laid out contiguously with no gaps, no
-    // overlaps, and no bytes before the first header or after the last
-    // entry's data - closing the "hidden bytes between entries or before
-    // the central directory" gap that the per-entry-only checks above
-    // cannot see on their own.
-    const sortedRanges = [...localRanges].sort((a, b) => a.localHeaderOffset - b.localHeaderOffset);
-    const first = sortedRanges[0];
+    // Third/Fourth Corrective F3/C4: the local-entries region (byte 0 through
+    // centralDirectoryOffset) must be covered *exactly* by the entries' own
+    // local byte ranges, laid out contiguously with no gaps, no overlaps, and
+    // no bytes before the first header or after the last entry's data -
+    // closing the "hidden bytes between entries or before the central
+    // directory" gap that the per-entry-only checks above cannot see on
+    // their own. Critically, `localRanges` is checked in the exact order it
+    // was populated above - i.e. central-directory iteration order - and is
+    // never independently sorted by offset: a canonical archive's physical
+    // local-entry byte layout must match that same central-directory order,
+    // not merely be *some* gap-free permutation of it. Sorting first would
+    // "prove" only gap-free coverage while silently discarding the
+    // physical-order-vs-declared-order relationship, letting a byte-reordered
+    // (non-canonical) but structurally-complete archive pass.
+    const first = localRanges[0];
     if (first !== undefined && first.localHeaderOffset !== 0) {
       return { ok: false, reason: 'unexpected_archive_prefix' };
     }
-    for (let index = 1; index < sortedRanges.length; index += 1) {
-      const previous = sortedRanges[index - 1]!;
-      const current = sortedRanges[index]!;
+    for (let index = 1; index < localRanges.length; index += 1) {
+      const previous = localRanges[index - 1]!;
+      const current = localRanges[index]!;
       if (current.localHeaderOffset === previous.localHeaderOffset) {
         return { ok: false, reason: 'local_offset_reused' };
+      }
+      if (current.localHeaderOffset < previous.localHeaderOffset) {
+        return { ok: false, reason: 'local_order_mismatch' };
       }
       if (current.localHeaderOffset < previous.dataEnd) {
         return { ok: false, reason: 'local_entry_overlap' };
@@ -292,7 +301,7 @@ export function parseZip(bytes: Uint8Array): ZipParseResult {
         return { ok: false, reason: 'local_entry_gap' };
       }
     }
-    const last = sortedRanges[sortedRanges.length - 1];
+    const last = localRanges[localRanges.length - 1];
     if (last !== undefined && last.dataEnd !== centralDirectoryOffset) {
       return { ok: false, reason: 'bytes_before_central_directory' };
     }
