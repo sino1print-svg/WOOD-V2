@@ -1,24 +1,21 @@
 {
-  "package": "mockup-photoshoot-director-phase10-batch10.4-second-corrective",
-  "phase": "Phase 10 — Batch 10.4 — Second Corrective (Pair-Scope Integrity, Independent Manifest Verification, ZIP Platform Lock, Provenance Semantics, Checkpoint Integrity)",
-  "status": "PHASE 10 — BATCH 10.4 SECOND CORRECTIVE COMPLETE — AWAITING INDEPENDENT AUDIT",
-  "created_at_utc": "2026-07-26T11:44:00Z",
+  "package": "mockup-photoshoot-director-phase10-batch10.4-third-corrective",
+  "phase": "Phase 10 — Batch 10.4 — Third Corrective (Relational Pair Integrity, Complete ZIP Byte Coverage, Writer Path Safety, Evidence Accuracy)",
+  "status": "PHASE 10 — BATCH 10.4 THIRD CORRECTIVE COMPLETE — AWAITING INDEPENDENT AUDIT",
+  "created_at_utc": "2026-07-26T15:31:48Z",
   "contents": "Complete runnable working tree (git-ready). node_modules/dist/.git excluded; run npm ci to install.",
   "starting_checkpoint": {
-    "filename": "mockup-photoshoot-director-phase10-batch10.4-first-corrective.zip",
-    "sha256": "5509e3ee503a9a8a2b2316153dff6c7b7763367e5d49df6ab1fdeb27c3066ca4",
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-second-corrective.zip",
+    "sha256": "5dab5c173a24bbddf0721f053ace0b73e7329dd158bc719413893eb6fa39ec16",
     "verified_on_receipt": true
   },
-  "corrective_scope": "Responds to the independent audit findings C1-C8 against the Batch 10.4 First Corrective packaging delivery. No Batch 10.5 work performed. No UI, clipboard, download, backup, restore, Prompt Pack, rendered-image, persistence-write, or external-integration work performed.",
+  "corrective_scope": "Responds to the independent audit findings F1-F5 against the Batch 10.4 Second Corrective packaging delivery. No Batch 10.5 work performed. No UI, clipboard, download, backup, restore, Prompt Pack, rendered-image, persistence-write, or external-integration work performed.",
   "findings_addressed": {
-    "C1": "Pair-file generation now requires a genuinely selected Output A AND Output B for the same scene, with Output B.sourceOutputAId matching that Output A and plan.numbering independently confirming the relationship - the unconditional 'pair scope always emits' special case is gone; partial pair plans (missing/mismatched B) never leak prompt_pair or prompt_b.",
-    "C2": "Manifest reconciliation now rejects extra fileSizes/checksums keys not present in includedFiles, and rejects unsafe (backslash) bookkeeping paths - includedFiles/fileSizes/checksums path sets must reconcile exactly, not merely be a subset check.",
-    "C3": "Every manifest.json/checksums.sha256 mutation test now updates exactly the mutated entry's outer-ledger checksum (and, for manifest.json, checksums.sha256's own line referencing it) before verifying, proving the semantic layer rejects the tamper independently of the outer per-entry ledger, with exact failure reasons asserted.",
-    "C4": "The ZIP verifier now compares the complete 16-bit central-directory 'version made by' field (platform + version) instead of masking to the low byte only, so a non-MS-DOS platform byte is rejected even when the version byte still matches.",
-    "C5": "version_snapshot packaging now fails closed (existing EXPORT_SCOPE_001 code) instead of writing VersionSnapshot.stateHash - a whole-project state digest - into sourceFingerprints.sessionFingerprint, which is meant to be a real SessionFingerprint.hash; there is no session to describe for this scope and no schema change was made to invent one.",
-    "C6": "packageExport's outer catch path now returns the warnings/omissions already known from a successfully prepared plan instead of unconditionally resetting to empty arrays; proven via a narrow, test-only dependency-injection seam (packageExportWithHooksForTesting, not part of the public packaging surface) that forces a post-plan exception without monkey-patching any global API.",
-    "C7": "Scope-matrix tests now assert the complete, ordered array of {path, kind} entries (not a kind Set) for every supported scope, including a partial pair without B, a multi-scene session, a multi-session complete_project export, and the collision-heavy-names case - proving exact multiplicity, not just kind presence.",
-    "C8": "scripts/source-tree-hash.mjs now explicitly excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt by exact relative path, fixing the unreproducible self-referential combined-hash cycle from the First Corrective; the recorded value below is stable across edits to either bookkeeping file."
+    "F1": "A shape-valid plan whose Output B is linked to the wrong Output A (or whose numbering disagrees with an otherwise-consistent selection) now fails the whole packaging operation (existing EXPORT_LINK_001 code, no bytes) instead of silently packaging the B prompt under a false relationship while only suppressing the pair-execution file.",
+    "F2": "Pair-file eligibility is matched on the complete (sessionId, sceneId) identity throughout (package-plan.ts), not sceneId alone, closing a cross-session leakage path where a shape-valid hostile plan reusing a scene id across two sessions could let one session's real Output A/B authorize a pair file in another session with no selection of its own.",
+    "F3": "The ZIP verifier (zip-verifier.ts) now proves the local-entries region is one exact, contiguous, canonical byte sequence (no prefix, no gaps between entries, no bytes before the central directory, no reused/overlapping local offsets), closing a gap where hidden bytes - including image signatures - outside every declared entry went completely unaccounted for.",
+    "F4": "The public writeDeterministicZip writer (zip-writer.ts) now rejects unsafe paths (traversal, absolute, drive-prefixed, UNC, backslash, empty/dot segments, control characters) directly, independent of any caller-side check, with duplicate-path and unordered-entries kept as distinct, precise reasons from path-unsafety.",
+    "F5": "Corrected evidence/test accuracy: the symlink-specific check now runs before the generic non-zero-external-attributes check so its exact reason is reachable and asserted; several structural mutation tests now assert precise reasons instead of a bare ok:false; the partial-pair exact matrix test asserts the exact preserved Output B omission; a genuine multi-scene GROUP scope case was added (distinct from the pre-existing multi-scene session case)."
   },
   "archived_release_metadata": [
     {
@@ -40,8 +37,8 @@
   "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over the full working tree, excluding node_modules/dist/.git and CHECKSUMS.txt itself, 403 files)",
   "source_tree_combined_hash": {
     "command": "npm run hash:source-tree",
-    "value": "0c00daa9e3a7fa363959ba115b9d806fb7de2fc492edcea343ae633ae00f4538  402 files",
-    "note": "Second Corrective C8 fix: scripts/source-tree-hash.mjs now explicitly excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt by exact relative path (documented in the script itself), because a combined hash that embeds itself in one of the files it hashes can never reproduce - the act of writing the value changes the bytes that produced it. 402 = 404 total regular files minus these 2 excluded bookkeeping files. This value is reproducible on any clean extraction: editing CHECKPOINT-MANIFEST.json or CHECKSUMS.txt afterward does not change it, since both are now outside the hashed set. Verify with: sha256sum -c CHECKSUMS.txt && node scripts/source-tree-hash.mjs."
+    "value": "39adb002692f34675729945a823af8687a29f6d82607266c6d5738aa1a0ebf16  402 files",
+    "note": "scripts/source-tree-hash.mjs explicitly excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt by exact relative path (documented in the script itself), because a combined hash that embeds itself in one of the files it hashes can never reproduce - the act of writing the value changes the bytes that produced it. This value is reproducible on any clean extraction: editing CHECKPOINT-MANIFEST.json or CHECKSUMS.txt afterward does not change it, since both are now outside the hashed set. Verify with: sha256sum -c CHECKSUMS.txt && node scripts/source-tree-hash.mjs."
   },
   "docs_spec_modified": false,
   "used_force": false,
@@ -52,11 +49,12 @@
       "src/export/packaging/package.ts",
       "src/export/packaging/package-plan.ts",
       "src/export/packaging/zip-verifier.ts",
-      "scripts/source-tree-hash.mjs"
+      "src/export/packaging/zip-writer.ts"
     ],
     "modified_tests": [
       "test/export-engine/packaging/corrective-adversarial.test.ts",
-      "test/export-engine/packaging/scope-matrix.test.ts"
+      "test/export-engine/packaging/scope-matrix.test.ts",
+      "test/export-engine/packaging/zip-byte-helpers.ts"
     ]
   }
 }
