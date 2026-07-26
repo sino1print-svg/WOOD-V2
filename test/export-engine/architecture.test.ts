@@ -64,11 +64,18 @@ describe('Export Engine planning architecture', () => {
 });
 
 describe('Batch 10.3 formatter architecture', () => {
-  const formatterSource = readdirSync(FORMATTER_ROOT)
+  const formatterFileNames = readdirSync(FORMATTER_ROOT)
     .filter((name) => name.endsWith('.ts'))
-    .sort()
+    .sort();
+  // `index.ts` is the deliberate Batch 10.4 integration seam (it re-exports the
+  // `packaging/` subdirectory - EX First Corrective F7); every other top-level
+  // file remains pure Batch 10.1-10.3 formatter implementation with zero
+  // packaging content, checked below.
+  const pureFormatterSource = formatterFileNames
+    .filter((name) => name !== 'index.ts')
     .map((name) => readFileSync(path.join(FORMATTER_ROOT, name), 'utf8'))
     .join('\n');
+  const indexSource = readFileSync(path.join(FORMATTER_ROOT, 'index.ts'), 'utf8');
 
   it('imports only shared contracts, config, and formatter-local modules', () => {
     expect(
@@ -77,27 +84,32 @@ describe('Batch 10.3 formatter architecture', () => {
   });
 
   it('imports no engine, UI, persistence, or application module', () => {
+    const formatterSource = `${pureFormatterSource}\n${indexSource}`;
     expect(formatterSource).not.toMatch(/from ['"][^'"]*engines\//u);
     expect(formatterSource).not.toMatch(/from ['"][^'"]*(?:ui|ui-engine)\//u);
     expect(formatterSource).not.toMatch(/from ['"][^'"]*persistence\//u);
     expect(formatterSource).not.toMatch(/from ['"][^'"]*app\//u);
   });
 
-  it('contains no Batch 10.4+ packaging or delivery implementation', () => {
-    expect(formatterSource).not.toContain('checksums.sha256');
-    expect(formatterSource).not.toContain('navigator.clipboard');
-    expect(formatterSource).not.toContain('ClipboardItem');
-    expect(formatterSource).not.toContain('CompressionStream');
-    expect(formatterSource).not.toContain('BackupCreated');
-    expect(formatterSource).not.toContain('RestorePlan');
+  it('contains no Batch 10.4 packaging or delivery implementation outside the index.ts re-export seam', () => {
+    expect(pureFormatterSource).not.toContain('checksums.sha256');
+    expect(pureFormatterSource).not.toContain('navigator.clipboard');
+    expect(pureFormatterSource).not.toContain('ClipboardItem');
+    expect(pureFormatterSource).not.toContain('CompressionStream');
+    expect(pureFormatterSource).not.toContain('BackupCreated');
+    expect(pureFormatterSource).not.toContain('RestorePlan');
+  });
+
+  it('index.ts re-exports the Batch 10.4 packaging public surface (no clipboard/backup/restore leakage)', () => {
+    expect(indexSource).toContain("from './packaging'");
+    expect(indexSource).not.toContain('navigator.clipboard');
+    expect(indexSource).not.toContain('ClipboardItem');
+    expect(indexSource).not.toContain('BackupCreated');
+    expect(indexSource).not.toContain('RestorePlan');
   });
 
   it('keeps formatter responsibilities in separate modules', () => {
-    expect(
-      readdirSync(FORMATTER_ROOT)
-        .filter((name) => name.endsWith('.ts'))
-        .sort(),
-    ).toEqual([
+    expect(formatterFileNames).toEqual([
       'canonical-json.ts',
       'document-builder.ts',
       'failures.ts',

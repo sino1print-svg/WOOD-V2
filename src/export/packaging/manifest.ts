@@ -17,8 +17,6 @@ import {
 import type { ExportEngineVersions } from '../../shared/contracts/export-contracts';
 import type { ExportPlan } from '../../shared/contracts/export-planning';
 import { ERROR_BY_CODE } from '../../shared/errors';
-import { sha256Bytes } from './checksum';
-import { encodeUtf8 } from '../utf8';
 import { compareUtf8 } from '../runtime';
 import {
   serializeExportJson,
@@ -40,24 +38,20 @@ function warningsFromPlan(plan: ExportPlan): readonly ExportManifestWarning[] {
     });
 }
 
-function combinedFingerprint(hashes: readonly Sha256[], fallbackSeed: string): Sha256 {
-  if (hashes.length === 1) return hashes[0]!;
-  if (hashes.length === 0) return sha256Bytes(encodeUtf8(fallbackSeed));
-  return sha256Bytes(encodeUtf8([...hashes].join('\n')));
-}
-
+/**
+ * Authoritative provenance, taken verbatim from `plan.provenance` (EX §13
+ * First Corrective F5) - real source session/scene/cover hashes, never a
+ * fallback hash of `projectId` or any other synthetic/placeholder value.
+ */
 function sourceFingerprints(plan: ExportPlan): ExportManifest['sourceFingerprints'] {
-  const sessionHashes = plan.selection.sessions.map((session) => session.fingerprint.hash);
-  const sessionFingerprint = combinedFingerprint(sessionHashes, plan.scope.projectId);
-  const sceneFingerprints = plan.selection.scenes.map((scene) => scene.sceneFingerprint);
-  const firstCover = plan.selection.covers[0];
+  const { sessionFingerprint, sceneFingerprints, coverHash } = plan.provenance;
   const output: {
     sessionFingerprint: Sha256;
     sceneFingerprints?: readonly Sha256[];
     coverHash?: Sha256;
   } = { sessionFingerprint };
   if (sceneFingerprints.length > 0) output.sceneFingerprints = sceneFingerprints;
-  if (firstCover !== undefined) output.coverHash = firstCover.coverHash;
+  if (coverHash !== null) output.coverHash = coverHash;
   return output;
 }
 

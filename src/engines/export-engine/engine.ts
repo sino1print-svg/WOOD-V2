@@ -4,7 +4,7 @@ import { exportFailure } from './failures';
 import { buildExportNumbering } from './ordering';
 import { freezeDeep } from './runtime';
 import { resolveExportScope } from './scope';
-import { selectExportArtifacts } from './selection';
+import { computeExportProvenance, selectExportArtifacts } from './selection';
 import type { ExportAllowlistedSelection, ExportPlanResult } from './types';
 import {
   evaluateExportEligibility,
@@ -106,6 +106,7 @@ export function createExportPlan(input: ExportEngineInput): ExportPlanResult {
         numbering,
         groupNumbering,
         selection,
+        provenance: computeExportProvenance(input.source, resolution.value),
         omissions: eligibility.omissions,
         issues: eligibility.issues,
         partial: eligibility.omissions.length > 0,

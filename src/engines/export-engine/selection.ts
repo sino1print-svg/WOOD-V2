@@ -6,6 +6,7 @@ import type {
   Project,
   PromptMetadata,
   Scene,
+  Sha256,
   ValidationResult,
   ValidationResultId,
   VersionSnapshot,
@@ -18,6 +19,7 @@ import type {
   ExportAllowlistedSelection,
   ExportNumberingEntry,
   ExportOrderedSelectionReference,
+  ExportPlanProvenance,
   ExportResolvedScope,
   ExportSelectedArtworkMetadata,
   ExportSelectedColor,
@@ -575,4 +577,56 @@ export function selectExportArtifacts(
     executionPlans: selectedExecutionPlans,
     ordered,
   };
+}
+
+/**
+ * Authoritative source provenance (EX §13; Batch 10.4 First Corrective F5) -
+ * computed from the real source project/session/scene/cover in the resolved
+ * scope, independent of `resolved.policy` content filtering.
+ *
+ * `version_snapshot` is the one supported scope with zero resolved sessions
+ * (scope.ts); there the manifest's session-shaped fingerprint field has no
+ * session to describe, so the resolved `VersionSnapshot`'s own authoritative
+ * `stateHash` is used instead - real source data, never a fabricated value.
+ * `persistence/version-history` already treats a snapshot with no `stateHash`
+ * as corrupted and refuses to apply it, so every snapshot reachable here
+ * through a successful plan has one; the absence path below is therefore
+ * unreachable for valid data and surfaces as `EXPORT_CORRUPT_001` (via the
+ * caller's try/catch) rather than a fabricated digest.
+ */
+export function computeExportProvenance(
+  source: ExportSourceSnapshot,
+  resolved: ExportResolvedScope,
+): ExportPlanProvenance {
+  const project = source.project as Project;
+  const sessions = canonicalSessions(project, resolved.sessionIds);
+
+  const sceneFingerprints: Sha256[] = [];
+  for (const session of sessions) {
+    for (const scene of canonicalScenes(session, resolved.sceneIds)) {
+      sceneFingerprints.push(scene.sceneFingerprint);
+    }
+  }
+
+  const requestedCoverIds = new Set<string>(resolved.coverIds);
+  let coverHash: Sha256 | null = null;
+  for (const session of sessions) {
+    if (session.cover !== null && requestedCoverIds.has(session.cover.id)) {
+      coverHash = session.cover.coverHash;
+      break;
+    }
+  }
+
+  const primarySession = sessions[0];
+  if (primarySession !== undefined) {
+    return { sessionFingerprint: primarySession.fingerprint.hash, sceneFingerprints, coverHash };
+  }
+
+  const versionId = resolved.versionIds[0];
+  const snapshot = versionId !== undefined ? project.versionHistory[versionId] : undefined;
+  if (snapshot?.stateHash !== undefined) {
+    return { sessionFingerprint: snapshot.stateHash, sceneFingerprints, coverHash };
+  }
+
+  throw new Error('export-provenance-unavailable');
 }

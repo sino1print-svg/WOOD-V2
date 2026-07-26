@@ -134,6 +134,7 @@ describe('Canonical JSON formatter', () => {
         partial: plan.partial,
         issues: plan.issues,
         omissions: plan.omissions,
+        provenance: plan.provenance,
         selection: plan.selection,
         groupNumbering: plan.groupNumbering,
         numbering: plan.numbering,

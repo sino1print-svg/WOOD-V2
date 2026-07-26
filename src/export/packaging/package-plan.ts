@@ -77,6 +77,35 @@ function outputSlugMap(plan: ExportPlan): Map<string, string> {
   return map;
 }
 
+/**
+ * Pair-execution files must never be inferred from `plan.numbering` alone -
+ * numbering always carries a scene's real `outputBId` whenever the *source*
+ * scene has an Output B, regardless of whether Output B is actually selected
+ * for this scope (EX §12 First Corrective F2). `output_a`, `group_a`, `cover`,
+ * and `execution_plan` scopes must never leak that relationship through a
+ * pair file; `group`/`session`/`complete_project`/`all` may only emit one
+ * where both Output A and Output B are genuinely selected for that scene;
+ * `pair` scope always emits its single scene's execution note.
+ */
+const PAIR_FILE_SCOPES_REQUIRING_BOTH_SELECTED = new Set([
+  'group',
+  'session',
+  'complete_project',
+  'all',
+]);
+
+function shouldEmitPairFile(
+  plan: ExportPlan,
+  sceneId: ExportPlan['numbering'][number]['sceneId'],
+): boolean {
+  const scopeDetail = plan.scope.scopeDetail;
+  if (scopeDetail === 'pair') return true;
+  if (!PAIR_FILE_SCOPES_REQUIRING_BOTH_SELECTED.has(scopeDetail)) return false;
+  const hasSelectedA = plan.selection.outputsA.some((item) => item.sceneId === sceneId);
+  const hasSelectedB = plan.selection.outputsB.some((item) => item.sceneId === sceneId);
+  return hasSelectedA && hasSelectedB;
+}
+
 /** Builds every content file. Returns `null` on the first unrecoverable resource-limit failure. */
 export function buildPackageContentEntries(
   plan: ExportPlan,
@@ -210,7 +239,9 @@ export function buildPackageContentEntries(
       });
     }
 
-    const sessionNumbering = plan.numbering.filter((item) => item.sessionId === sessionId);
+    const sessionNumbering = plan.numbering.filter(
+      (item) => item.sessionId === sessionId && shouldEmitPairFile(plan, item.sceneId),
+    );
     for (const entry of sessionNumbering) {
       const built = buildPairExecutionMarkdown(entry, contentLimits);
       if (built === null) return overflow('packaging.pairExecution');

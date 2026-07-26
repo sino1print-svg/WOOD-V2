@@ -449,11 +449,33 @@ export interface ExportPlanOmission {
   readonly code: ExportPlanningFailureCode;
 }
 
+/**
+ * Authoritative source provenance for the resolved scope - EX §13 manifest
+ * `sourceFingerprints` (Batch 10.4 First Corrective F5). Computed directly from
+ * the real source session(s)/scene(s)/cover in scope, independent of the
+ * content policy that governs `selection` - so it remains available even for
+ * scopes (e.g. `output_a`, `pair`, `cover`) whose `selection.sessions` is
+ * empty. Never a placeholder, synthetic, random, or wall-clock-derived value.
+ *
+ * `sessionFingerprint` is the primary (canonically first) resolved session's
+ * real `SessionFingerprint.hash` (DM §3.18 defines the fingerprint per-session;
+ * there is no cross-session combined fingerprint in the domain model).
+ * `sceneFingerprints` covers every resolved scene across every resolved
+ * session, in canonical order. `coverHash` is the real selected cover's
+ * `coverHash` when the resolved scope includes one, else `null`.
+ */
+export interface ExportPlanProvenance {
+  readonly sessionFingerprint: Sha256;
+  readonly sceneFingerprints: readonly Sha256[];
+  readonly coverHash: Sha256 | null;
+}
+
 export interface ExportPlan {
   readonly scope: ExportResolvedScope;
   readonly numbering: readonly ExportNumberingEntry[];
   readonly groupNumbering: readonly ExportGroupNumberingEntry[];
   readonly selection: ExportAllowlistedSelection;
+  readonly provenance: ExportPlanProvenance;
   readonly omissions: readonly ExportPlanOmission[];
   /** Includes both warning-severity and blocking-severity omitted-artifact diagnostics. */
   readonly issues: readonly ValidationFailure[];

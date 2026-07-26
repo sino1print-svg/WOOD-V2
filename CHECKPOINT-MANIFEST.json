@@ -1,0 +1,57 @@
+{
+  "package": "mockup-photoshoot-director-phase10-batch10.4-first-corrective",
+  "phase": "Phase 10 — Batch 10.4 — First Corrective (Scope Enforcement, Independent ZIP Verification, Manifest Provenance)",
+  "status": "PHASE 10 — BATCH 10.4 FIRST CORRECTIVE COMPLETE — AWAITING INDEPENDENT AUDIT",
+  "created_at_utc": "2026-07-26T10:31:15Z",
+  "contents": "Complete runnable working tree (git-ready). node_modules/dist/.git excluded; run npm ci to install.",
+  "starting_checkpoint": {
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-deterministic-packaging.zip",
+    "sha256": "6a45c1402744bd210eb4fcce372053f3443775023b41df4305da273fb2a64ffb",
+    "verified_on_receipt": true
+  },
+  "corrective_scope": "Responds to the independent audit findings F1-F10 against the Batch 10.4 deterministic packaging delivery. No Batch 10.5 work performed. No UI, clipboard, download, backup, restore, Prompt Pack, rendered-image, persistence-write, or external-integration work performed.",
+  "findings_addressed": {
+    "F1": "Reject backup/prompt_pack packaging scopes before any content or ZIP bytes are produced (existing EXPORT_SCOPE_001 code reused, no new error code).",
+    "F2": "Exact scope-to-file allowlists — every entry now derives from resolved scope content policy AND actually-selected artifacts; unconditional pair-file emission removed.",
+    "F3": "Independent semantic ZIP verifier — structural ZIP parsing plus checksums.sha256 and manifest.json content verification, all from the final bytes, never trusting the writer's own ledger alone.",
+    "F4": "Local/central directory header reconciliation and fixed-metadata enforcement (timestamp, compression method, general-purpose flag, external attributes, no data descriptor, no ZIP64, no symlink attributes).",
+    "F5": "Authoritative source fingerprints — plan.provenance (sessionFingerprint/sceneFingerprints/coverHash) computed from real source session/scene/cover data; removed the projectId-hash fallback.",
+    "F6": "Failure results after a valid plan now preserve plan.omissions and warning-severity plan.issues on every post-plan failure path.",
+    "F7": "src/export/index.ts now re-exports the approved packaging public surface; architecture tests updated transparently rather than relying on non-recursive exact-file-list blind spots.",
+    "F8": "This file, plus archiving of the stale Phase 7/9 root release metadata (see archived_release_metadata below) and a current per-file checksum listing (CHECKSUMS.txt).",
+    "F9": "Regular-file count and total ZIP-entry count are reported separately in the First Corrective completion report, not conflated.",
+    "F10": "createdAt is validated against real calendar semantics (leap years, days-in-month, hour/minute/second ranges), not just a text pattern, without reading the wall clock."
+  },
+  "archived_release_metadata": [
+    {
+      "file": "ARCHIVE-PHASE9-MANIFEST.json",
+      "was": "MANIFEST.json",
+      "note": "Phase 9 release manifest, superseded — does not describe the current tree."
+    },
+    {
+      "file": "ARCHIVE-PHASE7-RELEASE-MANIFEST.json",
+      "was": "RELEASE-MANIFEST.json",
+      "note": "Phase 7 Third Corrective release manifest, superseded — does not describe the current tree."
+    },
+    {
+      "file": "ARCHIVE-SHA256SUMS-PRE-PHASE10.txt",
+      "was": "SHA256SUMS.txt",
+      "note": "Pre-Phase-10 per-file checksum listing (322 entries, Phase 9 vintage), superseded by CHECKSUMS.txt."
+    }
+  ],
+  "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over the full working tree, excluding node_modules/dist/.git and CHECKSUMS.txt itself, 403 files)",
+  "source_tree_combined_hash": {
+    "command": "npm run hash:source-tree",
+    "value": "77b557f3cd89d78783d61d8c050e3945eb0ee21aef6ae05cde8fc7a126ff06da  404 files",
+    "note": "404 = the 403 files listed in CHECKSUMS.txt plus CHECKSUMS.txt itself (this script has no self-exclusion)."
+  },
+  "docs_spec_modified": false,
+  "used_force": false,
+  "tests_deleted": false,
+  "batch_10_5_started": false,
+  "new_test_files_this_corrective": [
+    "test/export-engine/packaging/corrective-adversarial.test.ts",
+    "test/export-engine/packaging/scope-matrix.test.ts",
+    "test/export-engine/packaging/zip-byte-helpers.ts"
+  ]
+}

@@ -3,6 +3,14 @@
  * There is deliberately no update command or write path in the test suite;
  * changing a fixture and updating these digests must be a deliberate,
  * reviewed decision, not an automatic snapshot refresh.
+ *
+ * Updated for the Batch 10.4 First Corrective:
+ * - F2: single-output-a, partial-with-omissions, and cover-included no
+ *   longer include a leaked prompt_pair entry (that scope/selection never
+ *   selects both Output A and Output B for the scene).
+ * - F5: manifest.json sourceFingerprints now carry the real source
+ *   session/scene/cover hashes (plan.provenance) instead of a projectId
+ *   fallback hash, changing every case's manifest/checksums/ZIP bytes.
  */
 import type { GoldenZipCaseName } from './golden-fixtures';
 
@@ -35,14 +43,14 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
       {
         path: 'project-001/checksums.sha256',
         kind: 'checksums',
-        byteLength: 585,
-        sha256: 'ae4d37ba444eae4f06f46e25e8501239006bf6389b8baf6e365822f0913fad7f',
+        byteLength: 472,
+        sha256: '5f8d9f791b63d5b3300649cd3c8a3e3faf091456a8a7254c7c6128a7d23f9da6',
       },
       {
         path: 'project-001/manifest.json',
         kind: 'manifest',
-        byteLength: 2067,
-        sha256: '7560d1b2e2cf5825c0850ab78397f990a60b6f24c156f1859e880eb4000be613',
+        byteLength: 1888,
+        sha256: 'be653e2512e3f5646e60bacb820bfc79292359141fbd9332adf56c417aed1b99',
       },
       {
         path: 'project-001/session-01/metadata/prompt-metadata.json',
@@ -62,19 +70,13 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
         byteLength: 55,
         sha256: '0e4221b4341e07f2f441fe1588c212986b66cfa227ebc51e5dde3940bef668f0',
       },
-      {
-        path: 'project-001/session-01/prompts/pairs/001_pair_execution.md',
-        kind: 'prompt_pair',
-        byteLength: 146,
-        sha256: 'fb8b56c896e63657885fca00bbc27f8dcfcaccaff71af27944be98f56dfd84a0',
-      },
     ],
-    manifestSha256: '7560d1b2e2cf5825c0850ab78397f990a60b6f24c156f1859e880eb4000be613',
-    manifestByteLength: 2067,
-    checksumsSha256: 'ae4d37ba444eae4f06f46e25e8501239006bf6389b8baf6e365822f0913fad7f',
-    checksumsByteLength: 585,
-    zipSha256: 'c9a34aa79a376a6ab083dee6e189af40ff23cb8e20193a24ae6af3fed08791cc',
-    zipByteLength: 4746,
+    manifestSha256: 'be653e2512e3f5646e60bacb820bfc79292359141fbd9332adf56c417aed1b99',
+    manifestByteLength: 1888,
+    checksumsSha256: '5f8d9f791b63d5b3300649cd3c8a3e3faf091456a8a7254c7c6128a7d23f9da6',
+    checksumsByteLength: 472,
+    zipSha256: '5c7a94d781e4cb2a6ee1fa463ecac97ac63b263bc3ee8a9db20c1ac812ab90b5',
+    zipByteLength: 4116,
   },
   'a-b-pair': {
     entries: [
@@ -94,13 +96,13 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
         path: 'project-001/checksums.sha256',
         kind: 'checksums',
         byteLength: 805,
-        sha256: '622260c4356f789a746dec3363385699c2692855f39256b724f65ccdcdf2ea25',
+        sha256: '9f06411ca36661dee3a7010f3a15e8fa8189ce55d6d891f83f9f0782ef481845',
       },
       {
         path: 'project-001/manifest.json',
         kind: 'manifest',
-        byteLength: 2618,
-        sha256: '744003afc0e69d5a770b296fe76b3ceba0b44d550c1dcdc161d68b7e8e7ed0b1',
+        byteLength: 2725,
+        sha256: 'dd4f98a36af662640119d293d489736bf082136e41b079f0c50c68f63db9d672',
       },
       {
         path: 'project-001/session-01/metadata/prompt-metadata.json',
@@ -133,12 +135,12 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
         sha256: 'ed273017ccde6d1d999235f90e8617a8372a10587e619e082bd91d904abb6c42',
       },
     ],
-    manifestSha256: '744003afc0e69d5a770b296fe76b3ceba0b44d550c1dcdc161d68b7e8e7ed0b1',
-    manifestByteLength: 2618,
-    checksumsSha256: '622260c4356f789a746dec3363385699c2692855f39256b724f65ccdcdf2ea25',
+    manifestSha256: 'dd4f98a36af662640119d293d489736bf082136e41b079f0c50c68f63db9d672',
+    manifestByteLength: 2725,
+    checksumsSha256: '9f06411ca36661dee3a7010f3a15e8fa8189ce55d6d891f83f9f0782ef481845',
     checksumsByteLength: 805,
-    zipSha256: 'dc95fdf58044bfb59e4b27338edbb5295e36de9ae4f660e0aeb599bd6859845f',
-    zipByteLength: 6631,
+    zipSha256: 'b801c0b1e8368018876bfb0009f2c42e6ab85c66cf05bd09dbf9c7307ba6928c',
+    zipByteLength: 6738,
   },
   'multi-scene-session': {
     entries: [
@@ -499,14 +501,14 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
       {
         path: 'project-001/checksums.sha256',
         kind: 'checksums',
-        byteLength: 1077,
-        sha256: '3423a712a3d7826115433900e414604d97587ca0c752b9a2e25c0767470dc136',
+        byteLength: 964,
+        sha256: '96624983a193862004cb5acd5b0d8d1995327176f66bc99ed0be02c545888127',
       },
       {
         path: 'project-001/manifest.json',
         kind: 'manifest',
-        byteLength: 3479,
-        sha256: '3fab2c0b5e89993aec147dd6e9b9a1c2c9708a8b2d4eea0470e4714fb4ba0f51',
+        byteLength: 3193,
+        sha256: '6c22c4dd58c4829347f223ac17ae8e1c359f9807d34ca682abe72fe2ce547b65',
       },
       {
         path: 'project-001/session-01/cover/cover-metadata.json',
@@ -551,24 +553,18 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
         sha256: '0e4221b4341e07f2f441fe1588c212986b66cfa227ebc51e5dde3940bef668f0',
       },
       {
-        path: 'project-001/session-01/prompts/pairs/001_pair_execution.md',
-        kind: 'prompt_pair',
-        byteLength: 146,
-        sha256: 'fb8b56c896e63657885fca00bbc27f8dcfcaccaff71af27944be98f56dfd84a0',
-      },
-      {
         path: 'project-001/session-01/session-summary.md',
         kind: 'session_summary',
         byteLength: 240,
         sha256: '3dad79ff61e2fbf5e1f33d8cbfadd83aa0dd7614f7a712679b757bbb071499a4',
       },
     ],
-    manifestSha256: '3fab2c0b5e89993aec147dd6e9b9a1c2c9708a8b2d4eea0470e4714fb4ba0f51',
-    manifestByteLength: 3479,
-    checksumsSha256: '3423a712a3d7826115433900e414604d97587ca0c752b9a2e25c0767470dc136',
-    checksumsByteLength: 1077,
-    zipSha256: 'c48cc8bdd5eafcb6f40b1279c22e064c3c46d5598846e7c190f8f915feade28c',
-    zipByteLength: 10812,
+    manifestSha256: '6c22c4dd58c4829347f223ac17ae8e1c359f9807d34ca682abe72fe2ce547b65',
+    manifestByteLength: 3193,
+    checksumsSha256: '96624983a193862004cb5acd5b0d8d1995327176f66bc99ed0be02c545888127',
+    checksumsByteLength: 964,
+    zipSha256: 'ace913efc83f6c5c2794edddb9e5f224ec4cbc5c4dcd225847dcd93b445a8209',
+    zipByteLength: 10075,
   },
   'cover-included': {
     entries: [
@@ -581,14 +577,14 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
       {
         path: 'project-001/checksums.sha256',
         kind: 'checksums',
-        byteLength: 681,
-        sha256: 'f3513f56608c1b46108a61a50bce3e061921541edfa29db4a7e25468d9dd53cb',
+        byteLength: 568,
+        sha256: '3fabb95dab73379eccaca573f50e29e5b0dcda8cc58f1150914ae75693a09ef0',
       },
       {
         path: 'project-001/manifest.json',
         kind: 'manifest',
-        byteLength: 2390,
-        sha256: 'bf01c1c6c92da9123f424d10330caae046e56128910c57deae5ebc4241c375b4',
+        byteLength: 2211,
+        sha256: '9e8d4fa22c5098365abc22e5ffa9560904ee475f05ba530810ec3c99960909ec',
       },
       {
         path: 'project-001/session-01/cover/cover-metadata.json',
@@ -614,19 +610,13 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
         byteLength: 138,
         sha256: '7a8398f8838de5277f190204f7fc7a96eb978f7796a4bd02b0ce4740e42661c3',
       },
-      {
-        path: 'project-001/session-01/prompts/pairs/001_pair_execution.md',
-        kind: 'prompt_pair',
-        byteLength: 202,
-        sha256: 'ed273017ccde6d1d999235f90e8617a8372a10587e619e082bd91d904abb6c42',
-      },
     ],
-    manifestSha256: 'bf01c1c6c92da9123f424d10330caae046e56128910c57deae5ebc4241c375b4',
-    manifestByteLength: 2390,
-    checksumsSha256: 'f3513f56608c1b46108a61a50bce3e061921541edfa29db4a7e25468d9dd53cb',
-    checksumsByteLength: 681,
-    zipSha256: '07f867dd30b696c671140bc3ea85a5355f9134d683c0a24e8add12466f5a7aad',
-    zipByteLength: 6230,
+    manifestSha256: '9e8d4fa22c5098365abc22e5ffa9560904ee475f05ba530810ec3c99960909ec',
+    manifestByteLength: 2211,
+    checksumsSha256: '3fabb95dab73379eccaca573f50e29e5b0dcda8cc58f1150914ae75693a09ef0',
+    checksumsByteLength: 568,
+    zipSha256: 'faa893730f771ed911c14bc23c70d67158f40c7131856e865cfca456ed961112',
+    zipByteLength: 5544,
   },
   'no-cover': {
     entries: [

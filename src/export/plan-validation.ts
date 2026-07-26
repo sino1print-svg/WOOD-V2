@@ -943,6 +943,15 @@ function selection(value: unknown, maximumEntries: number): boolean {
   );
 }
 
+function provenance(value: unknown, maximumEntries: number): boolean {
+  return (
+    exactRecord(value, ['sessionFingerprint', 'sceneFingerprints', 'coverHash']) &&
+    hash(value.sessionFingerprint) &&
+    stringArray(value.sceneFingerprints, maximumEntries, hash) &&
+    nullable(value.coverHash, hash)
+  );
+}
+
 export function validFormatterPlan(value: unknown, maximumEntries: number): value is ExportPlan {
   return (
     exactRecord(value, [
@@ -950,6 +959,7 @@ export function validFormatterPlan(value: unknown, maximumEntries: number): valu
       'numbering',
       'groupNumbering',
       'selection',
+      'provenance',
       'omissions',
       'issues',
       'partial',
@@ -958,6 +968,7 @@ export function validFormatterPlan(value: unknown, maximumEntries: number): valu
     denseArray(value.numbering, maximumEntries, numbering) &&
     denseArray(value.groupNumbering, maximumEntries, groupNumbering) &&
     selection(value.selection, maximumEntries) &&
+    provenance(value.provenance, maximumEntries) &&
     denseArray(value.omissions, maximumEntries, omission) &&
     denseArray(value.issues, maximumEntries, (item) => validationFailure(item, true)) &&
     typeof value.partial === 'boolean'

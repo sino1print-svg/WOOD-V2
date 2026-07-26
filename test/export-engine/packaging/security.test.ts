@@ -221,6 +221,7 @@ describe('Packaging security and adversarial-input protection (EX section 5/21)'
     if (parsed.ok) {
       const expected: readonly ExpectedZipEntry[] = result.entries.map((item) => ({
         path: item.path,
+        kind: item.kind,
         checksum: item.checksum,
       }));
       expect(verifyPackageZip(corrupted, expected).ok).toBe(false);
@@ -235,6 +236,7 @@ describe('Packaging security and adversarial-input protection (EX section 5/21)'
     if (!result.ok) return;
     const tamperedExpected: ExpectedZipEntry[] = result.entries.map((item) => ({
       path: item.path,
+      kind: item.kind,
       checksum: item.path.endsWith('manifest.json')
         ? sha256Bytes(bytes('tampered'))
         : item.checksum,
@@ -248,6 +250,7 @@ describe('Packaging security and adversarial-input protection (EX section 5/21)'
     if (!result.ok) return;
     const withoutOne = result.entries.slice(1).map((item) => ({
       path: item.path,
+      kind: item.kind,
       checksum: item.checksum,
     }));
     expect(verifyPackageZip(result.zipBytes, withoutOne).ok).toBe(false);
@@ -268,8 +271,16 @@ describe('Packaging security and adversarial-input protection (EX section 5/21)'
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const withDuplicate: ExpectedZipEntry[] = [
-      ...result.entries.map((item) => ({ path: item.path, checksum: item.checksum })),
-      { path: result.entries[0]!.path, checksum: result.entries[0]!.checksum },
+      ...result.entries.map((item) => ({
+        path: item.path,
+        kind: item.kind,
+        checksum: item.checksum,
+      })),
+      {
+        path: result.entries[0]!.path,
+        kind: result.entries[0]!.kind,
+        checksum: result.entries[0]!.checksum,
+      },
     ];
     expect(verifyPackageZip(result.zipBytes, withDuplicate).ok).toBe(false);
   });

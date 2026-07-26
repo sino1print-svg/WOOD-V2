@@ -11,6 +11,32 @@ import { hasExactKeys, isPlainRecord } from '../runtime';
 const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const SEMVER_LIKE = /^[0-9A-Za-z.+-]{1,64}$/u;
 const PROMPT_MODULE_TYPES: readonly string[] = Object.values(PromptModuleType);
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+/**
+ * Pure calendar-arithmetic validation (no `Date` object, no wall-clock read):
+ * rejects a syntactically well-formed but impossible timestamp such as month
+ * 13, February 30, hour 24, or minute/second 60.
+ */
+function isValidCalendarTimestamp(value: string): boolean {
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const hour = Number(value.slice(11, 13));
+  const minute = Number(value.slice(14, 16));
+  const second = Number(value.slice(17, 19));
+  if (month < 1 || month > 12) return false;
+  const maxDay = month === 2 && isLeapYear(year) ? 29 : DAYS_IN_MONTH[month - 1]!;
+  if (day < 1 || day > maxDay) return false;
+  if (hour > 23) return false;
+  if (minute > 59) return false;
+  if (second > 59) return false;
+  return true;
+}
 
 function isControlFree(value: string, maxLength: number): boolean {
   if (value.length === 0 || value.length > maxLength) return false;
@@ -26,7 +52,9 @@ export function isValidExportId(value: unknown): value is string {
 }
 
 export function isValidCreatedAt(value: unknown): value is string {
-  return typeof value === 'string' && TIMESTAMP_PATTERN.test(value);
+  return (
+    typeof value === 'string' && TIMESTAMP_PATTERN.test(value) && isValidCalendarTimestamp(value)
+  );
 }
 
 function isSemVerLike(value: unknown): value is string {

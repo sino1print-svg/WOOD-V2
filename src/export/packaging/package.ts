@@ -13,6 +13,7 @@ import {
   type ValidationFailure,
 } from '../../shared/domain-model';
 import { validateExportManifestShape } from '../../shared/export-manifest-schema-validation';
+import type { ExportPlanOmission } from '../../shared/contracts/export-planning';
 import { registeredExportFailure } from '../failures';
 import { prepareFormatterInput } from '../projection';
 import {
@@ -39,8 +40,9 @@ import { writeDeterministicZip } from './zip-writer';
 function failureResult(
   failures: readonly ValidationFailure[],
   warnings: readonly ValidationFailure[] = [],
+  omissions: readonly ExportPlanOmission[] = [],
 ): ExportPackageResult {
-  return { ok: false, failures, warnings, omissions: [] };
+  return { ok: false, failures, warnings, omissions };
 }
 
 function singleFailure(code: string, field: string): ExportPackageResult {
@@ -94,12 +96,22 @@ export function packageExport(input: ExportPackageInput): ExportPackageResult {
     const plan = prepared.value.plan;
     const warnings = plan.issues.filter((issue) => issue.severity === ValidationSeverity.Warning);
 
+    // Batch 10.4 packaging never implements backup or Prompt Pack behavior; a plan
+    // resolved against either scope must fail closed before any content is built.
+    if (plan.scope.scopeDetail === 'backup' || plan.scope.scopeDetail === 'prompt_pack') {
+      return failureResult(
+        [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope')!],
+        warnings,
+        plan.omissions,
+      );
+    }
+
     const planned = buildPackageContentEntries(
       plan,
       { planResult: input.planResult, limits: input.limits },
       input.limits,
     );
-    if (!planned.ok) return failureResult(planned.failures, warnings);
+    if (!planned.ok) return failureResult(planned.failures, warnings, plan.omissions);
 
     const totalContentBytes = planned.entries.reduce((sum, entry) => sum + entry.byteLength, 0);
     if (
@@ -109,6 +121,7 @@ export function packageExport(input: ExportPackageInput): ExportPackageResult {
       return failureResult(
         [registeredExportFailure('EXPORT_STORAGE_001', 'packaging.entries')!],
         warnings,
+        plan.omissions,
       );
     }
 
@@ -131,6 +144,7 @@ export function packageExport(input: ExportPackageInput): ExportPackageResult {
       return failureResult(
         [registeredExportFailure('EXPORT_CORRUPT_001', 'packaging.manifest')!],
         warnings,
+        plan.omissions,
       );
     }
 
@@ -144,6 +158,7 @@ export function packageExport(input: ExportPackageInput): ExportPackageResult {
       return failureResult(
         [registeredExportFailure('EXPORT_STORAGE_001', 'packaging.manifest')!],
         warnings,
+        plan.omissions,
       );
     }
     const manifestChecksum = sha256Bytes(serializedManifest.bytes);
@@ -160,6 +175,7 @@ export function packageExport(input: ExportPackageInput): ExportPackageResult {
       return failureResult(
         [registeredExportFailure('EXPORT_STORAGE_001', 'packaging.checksums')!],
         warnings,
+        plan.omissions,
       );
     }
     const checksumsChecksum = sha256Bytes(checksumsFile.bytes);
@@ -192,17 +208,22 @@ export function packageExport(input: ExportPackageInput): ExportPackageResult {
       input.limits.maxArchiveBytes,
     );
     if (!zipWrite.ok) {
-      return failureResult([registeredExportFailure('EXPORT_ZIP_001', 'packaging.zip')!], warnings);
+      return failureResult(
+        [registeredExportFailure('EXPORT_ZIP_001', 'packaging.zip')!],
+        warnings,
+        plan.omissions,
+      );
     }
 
     const verification = verifyPackageZip(
       zipWrite.bytes,
-      allEntries.map((entry) => ({ path: entry.path, checksum: entry.checksum })),
+      allEntries.map((entry) => ({ path: entry.path, kind: entry.kind, checksum: entry.checksum })),
     );
     if (!verification.ok) {
       return failureResult(
         [registeredExportFailure('EXPORT_CORRUPT_001', `packaging.verify.${verification.reason}`)!],
         warnings,
+        plan.omissions,
       );
     }
 
