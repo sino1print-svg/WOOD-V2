@@ -20,7 +20,8 @@ const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const ZIP64_EOCD_LOCATOR_SIGNATURE = 0x07064b50;
 const EOCD_FIXED_SIZE = 22;
 const EXPECTED_VERSION_NEEDED = 20;
-const EXPECTED_VERSION_MADE_BY = 20;
+/** Full 16-bit "version made by" field: platform 0x00 (MS-DOS/FAT) + version 0x14 (2.0) = 0x0014. */
+const EXPECTED_VERSION_MADE_BY = 0x0014;
 const EXPECTED_GENERAL_PURPOSE_FLAG = 0x0800;
 const EXPECTED_COMPRESSION_METHOD = 0;
 const EXPECTED_DOS_TIME = 0x0000;
@@ -127,7 +128,12 @@ export function parseZip(bytes: Uint8Array): ZipParseResult {
       if (readUint32(view, cursor) !== CENTRAL_DIRECTORY_SIGNATURE) {
         return { ok: false, reason: 'bad_central_directory_signature' };
       }
-      const versionMadeBy = readUint16(view, cursor + 4) & 0xff;
+      // Second Corrective C4: compare the *complete* 16-bit "version made by"
+      // field (platform high byte + version low byte). Masking with `& 0xff`
+      // would silently accept any platform (e.g. 0x0314 Unix) as long as the
+      // low version byte matched, which is exactly the writer's own choice
+      // of platform we must lock, not merely its spec-version claim.
+      const versionMadeBy = readUint16(view, cursor + 4);
       const versionNeeded = readUint16(view, cursor + 6);
       const generalPurposeFlag = readUint16(view, cursor + 8);
       const compressionMethod = readUint16(view, cursor + 10);
@@ -305,7 +311,10 @@ export type ZipVerificationFailureReason =
   | 'manifest_size_mismatch'
   | 'manifest_checksum_mismatch'
   | 'manifest_kind_mismatch'
-  | 'manifest_duplicate_path';
+  | 'manifest_duplicate_path'
+  | 'manifest_unsafe_path'
+  | 'manifest_filesizes_extra_path'
+  | 'manifest_checksums_extra_path';
 
 export type ZipVerificationResult =
   | { readonly ok: true }
@@ -428,11 +437,28 @@ function verifyManifestFile(
     if (path === 'manifest.json' || path === 'checksums.sha256') {
       return { ok: false, reason: 'manifest_self_reference', detail: path };
     }
+    if (!isSafeZipPath(path)) {
+      return { ok: false, reason: 'manifest_unsafe_path', detail: path };
+    }
     if (seenManifestPaths.has(path)) {
       return { ok: false, reason: 'manifest_duplicate_path', detail: path };
     }
     seenManifestPaths.add(path);
     kindByPath.set(path, typeof file.kind === 'string' ? file.kind : '');
+  }
+
+  // C2 (Second Corrective): `fileSizes`/`checksums` must carry exactly the
+  // `includedFiles` path set - an extra bookkeeping key must be rejected even
+  // when every included file itself checks out.
+  for (const key of Object.keys(fileSizes)) {
+    if (!seenManifestPaths.has(key)) {
+      return { ok: false, reason: 'manifest_filesizes_extra_path', detail: key };
+    }
+  }
+  for (const key of Object.keys(checksums)) {
+    if (!seenManifestPaths.has(key)) {
+      return { ok: false, reason: 'manifest_checksums_extra_path', detail: key };
+    }
   }
 
   const contentByRelativePath = new Map(contentEntries.map((item) => [item.relativePath, item]));

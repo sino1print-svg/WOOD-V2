@@ -52,11 +52,45 @@ function singleFailure(code: string, field: string): ExportPackageResult {
 }
 
 /**
+ * Test-only fault-injection seam (Second Corrective C6). Never part of
+ * `ExportPackageInput` or the packaging public surface (`./index.ts` does
+ * not re-export `packageExportWithHooksForTesting`); production code always
+ * calls `packageExport`, which supplies the no-op default below. It exists
+ * solely so a test can force an exception at one precise, documented point -
+ * immediately after a valid plan is prepared - without monkey-patching any
+ * global API, to prove the outer catch path still returns the
+ * already-known `warnings`/`omissions` rather than silently discarding them.
+ */
+export interface PackageExportInternalHooks {
+  readonly afterPlanPrepared?: () => void;
+}
+const NO_OP_HOOKS: PackageExportInternalHooks = {};
+
+/**
  * Build a deterministic ZIP package from an approved export plan. Typed
  * result only; hostile or malformed input never throws and never produces
  * partial ZIP bytes.
  */
 export function packageExport(input: ExportPackageInput): ExportPackageResult {
+  return packageExportInternal(input, NO_OP_HOOKS);
+}
+
+/** Do not import from outside test files; see `PackageExportInternalHooks` above. */
+export function packageExportWithHooksForTesting(
+  input: ExportPackageInput,
+  hooks: PackageExportInternalHooks,
+): ExportPackageResult {
+  return packageExportInternal(input, hooks);
+}
+
+function packageExportInternal(
+  input: ExportPackageInput,
+  hooks: PackageExportInternalHooks,
+): ExportPackageResult {
+  // Second Corrective C6: preserved across every failure path, including the
+  // outer catch - never silently reset to empty once a valid plan is known.
+  let knownWarnings: readonly ValidationFailure[] = [];
+  let knownOmissions: readonly ExportPlanOmission[] = [];
   try {
     // Reject throwing getters, toJSON traps, prototype pollution, cycles, sparse
     // arrays, and secret/path-shaped metadata before any property is read, using
@@ -95,10 +129,31 @@ export function packageExport(input: ExportPackageInput): ExportPackageResult {
 
     const plan = prepared.value.plan;
     const warnings = plan.issues.filter((issue) => issue.severity === ValidationSeverity.Warning);
+    knownWarnings = warnings;
+    knownOmissions = plan.omissions;
+    hooks.afterPlanPrepared?.();
 
     // Batch 10.4 packaging never implements backup or Prompt Pack behavior; a plan
     // resolved against either scope must fail closed before any content is built.
     if (plan.scope.scopeDetail === 'backup' || plan.scope.scopeDetail === 'prompt_pack') {
+      return failureResult(
+        [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope')!],
+        warnings,
+        plan.omissions,
+      );
+    }
+
+    // Second Corrective C5: `version_snapshot` is the one supported scope with
+    // zero resolved sessions (EX §3/scope.ts), so there is no real
+    // `SessionFingerprint.hash` this export can honestly report as
+    // `sourceFingerprints.sessionFingerprint` - a `VersionSnapshot.stateHash`
+    // is a whole-project state digest, not a session fingerprint, and using
+    // it there would misrepresent what the field means. `ExportManifest` (a
+    // frozen Batch 10.2 contract) has no session-less provenance shape to
+    // fall back to, and no schema change is in scope for this corrective, so
+    // packaging fails closed with the existing scope-rejection code rather
+    // than fabricate or misuse a hash.
+    if (plan.scope.scopeDetail === 'version_snapshot') {
       return failureResult(
         [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope')!],
         warnings,
@@ -245,6 +300,13 @@ export function packageExport(input: ExportPackageInput): ExportPackageResult {
       omissions: plan.omissions,
     };
   } catch {
-    return singleFailure('EXPORT_CORRUPT_001', 'packaging.input');
+    // C6: any warnings/omissions already known from a successfully prepared
+    // plan survive even an unexpected exception past that point - never
+    // silently reset to empty.
+    return failureResult(
+      [registeredExportFailure('EXPORT_CORRUPT_001', 'packaging.input')!],
+      knownWarnings,
+      knownOmissions,
+    );
   }
 }

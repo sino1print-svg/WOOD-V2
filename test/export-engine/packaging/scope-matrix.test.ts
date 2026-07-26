@@ -1,21 +1,59 @@
 /**
- * Batch 10.4 First Corrective - table-driven scope-to-entry-kind allowlist
- * (F2) and per-scope authoritative provenance (F5).
+ * Batch 10.4 Corrective - table-driven scope-to-entry allowlist (F2/C2) and
+ * per-scope authoritative provenance (F5/C5).
+ *
+ * Second Corrective C7: each case asserts the *exact*, fully-ordered array of
+ * `{path, kind}` pairs - not just the set of kinds present - so duplicate or
+ * missing entries, wrong paths, and wrong per-path kinds are all caught, and
+ * the multiplicity of repeated kinds (multiple `prompt_a`/`group_plan`/etc.
+ * across scenes/sessions) is verified rather than collapsed away by a Set.
  */
 import { describe, expect, it } from 'vitest';
 import { packageExport } from '../../../src/export/packaging';
+import { createExportPlan } from '../../../src/engines/export-engine';
+import type {
+  CoverId,
+  GroupId,
+  OutputAId,
+  OutputBId,
+  Project,
+  SceneId,
+  SessionId,
+} from '../../../src/shared/domain-model';
+import { ExportScope } from '../../../src/shared/domain-model';
 import type { ExportArtifactKind } from '../../../src/shared/contracts/export-contracts';
-import { CANONICAL_SCOPES } from '../fixtures';
-import { createPackageFixture } from './fixtures';
+import {
+  CANONICAL_EXPORT_INPUT,
+  CANONICAL_PROJECT,
+  CANONICAL_SCENE_ID,
+  CANONICAL_SCOPES,
+  CANONICAL_SESSION_ID,
+} from '../fixtures';
+import { createGoldenZipCases } from './golden-fixtures';
+import {
+  createMultiScenePackageFixture,
+  createPackageFixture,
+  packageInputFromFormatter,
+} from './fixtures';
 
 const digest9 = '9'.repeat(64);
 const digest6 = '6'.repeat(64);
 const digest8 = '8'.repeat(64);
 
+interface ExactEntry {
+  readonly kind: ExportArtifactKind;
+  readonly path: string;
+}
+
+function entriesOf(result: ReturnType<typeof packageExport>): readonly ExactEntry[] {
+  if (!result.ok) return [];
+  return result.entries.map((entry) => ({ kind: entry.kind, path: entry.path }));
+}
+
 interface ScopeCase {
   readonly name: string;
   readonly scopeIndex: number;
-  readonly expectedKinds: readonly ExportArtifactKind[];
+  readonly expectedEntries: readonly ExactEntry[];
   readonly expectSceneFingerprints: boolean;
   readonly expectCoverHash: boolean;
 }
@@ -24,21 +62,31 @@ const CASES: readonly ScopeCase[] = [
   {
     name: 'output_a',
     scopeIndex: 0,
-    expectedKinds: ['readme', 'checksums', 'manifest', 'prompt_metadata', 'validation', 'prompt_a'],
+    expectedEntries: [
+      { kind: 'readme', path: 'project-001/README.md' },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'project-001/session-01/prompts/A/001_tee-front_A.txt' },
+    ],
     expectSceneFingerprints: true,
     expectCoverHash: false,
   },
   {
     name: 'output_b',
     scopeIndex: 1,
-    expectedKinds: [
-      'readme',
-      'checksums',
-      'manifest',
-      'artwork_metadata',
-      'prompt_metadata',
-      'validation',
-      'prompt_b',
+    expectedEntries: [
+      { kind: 'readme', path: 'project-001/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'project-001/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
+      { kind: 'prompt_b', path: 'project-001/session-01/prompts/B/001_output-b-canonical_B.txt' },
     ],
     expectSceneFingerprints: true,
     expectCoverHash: false,
@@ -46,16 +94,19 @@ const CASES: readonly ScopeCase[] = [
   {
     name: 'pair',
     scopeIndex: 2,
-    expectedKinds: [
-      'readme',
-      'checksums',
-      'manifest',
-      'artwork_metadata',
-      'prompt_metadata',
-      'validation',
-      'prompt_a',
-      'prompt_b',
-      'prompt_pair',
+    expectedEntries: [
+      { kind: 'readme', path: 'project-001/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'project-001/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'project-001/session-01/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'project-001/session-01/prompts/B/001_tee-front_B.txt' },
+      { kind: 'prompt_pair', path: 'project-001/session-01/prompts/pairs/001_pair_execution.md' },
     ],
     expectSceneFingerprints: true,
     expectCoverHash: false,
@@ -63,17 +114,20 @@ const CASES: readonly ScopeCase[] = [
   {
     name: 'group',
     scopeIndex: 3,
-    expectedKinds: [
-      'readme',
-      'checksums',
-      'manifest',
-      'artwork_metadata',
-      'group_plan',
-      'prompt_metadata',
-      'validation',
-      'prompt_a',
-      'prompt_b',
-      'prompt_pair',
+    expectedEntries: [
+      { kind: 'readme', path: 'project-001/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'project-001/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'group_plan', path: 'project-001/session-01/groups/group-01.txt' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'project-001/session-01/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'project-001/session-01/prompts/B/001_tee-front_B.txt' },
+      { kind: 'prompt_pair', path: 'project-001/session-01/prompts/pairs/001_pair_execution.md' },
     ],
     expectSceneFingerprints: true,
     expectCoverHash: false,
@@ -81,21 +135,31 @@ const CASES: readonly ScopeCase[] = [
   {
     name: 'group_a',
     scopeIndex: 4,
-    expectedKinds: ['readme', 'checksums', 'manifest', 'prompt_metadata', 'validation', 'prompt_a'],
+    expectedEntries: [
+      { kind: 'readme', path: 'project-001/README.md' },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'project-001/session-01/prompts/A/001_tee-front_A.txt' },
+    ],
     expectSceneFingerprints: true,
     expectCoverHash: false,
   },
   {
     name: 'group_b',
     scopeIndex: 5,
-    expectedKinds: [
-      'readme',
-      'checksums',
-      'manifest',
-      'artwork_metadata',
-      'prompt_metadata',
-      'validation',
-      'prompt_b',
+    expectedEntries: [
+      { kind: 'readme', path: 'project-001/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'project-001/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
+      { kind: 'prompt_b', path: 'project-001/session-01/prompts/B/001_output-b-canonical_B.txt' },
     ],
     expectSceneFingerprints: true,
     expectCoverHash: false,
@@ -103,14 +167,14 @@ const CASES: readonly ScopeCase[] = [
   {
     name: 'cover',
     scopeIndex: 6,
-    expectedKinds: [
-      'readme',
-      'checksums',
-      'manifest',
-      'cover_metadata',
-      'cover_prompt',
-      'prompt_metadata',
-      'validation',
+    expectedEntries: [
+      { kind: 'readme', path: 'project-001/README.md' },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'cover_metadata', path: 'project-001/session-01/cover/cover-metadata.json' },
+      { kind: 'cover_prompt', path: 'project-001/session-01/cover/cover-prompt.txt' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
     ],
     expectSceneFingerprints: true,
     expectCoverHash: true,
@@ -118,21 +182,24 @@ const CASES: readonly ScopeCase[] = [
   {
     name: 'session',
     scopeIndex: 7,
-    expectedKinds: [
-      'readme',
-      'checksums',
-      'manifest',
-      'artwork_metadata',
-      'cover_metadata',
-      'cover_prompt',
-      'execution_plan',
-      'group_plan',
-      'prompt_metadata',
-      'validation',
-      'prompt_a',
-      'prompt_b',
-      'prompt_pair',
-      'session_summary',
+    expectedEntries: [
+      { kind: 'readme', path: 'project-001/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'project-001/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'cover_metadata', path: 'project-001/session-01/cover/cover-metadata.json' },
+      { kind: 'cover_prompt', path: 'project-001/session-01/cover/cover-prompt.txt' },
+      { kind: 'execution_plan', path: 'project-001/session-01/execution-plan.txt' },
+      { kind: 'group_plan', path: 'project-001/session-01/groups/group-01.txt' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'project-001/session-01/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'project-001/session-01/prompts/B/001_tee-front_B.txt' },
+      { kind: 'prompt_pair', path: 'project-001/session-01/prompts/pairs/001_pair_execution.md' },
+      { kind: 'session_summary', path: 'project-001/session-01/session-summary.md' },
     ],
     expectSceneFingerprints: true,
     expectCoverHash: true,
@@ -140,13 +207,13 @@ const CASES: readonly ScopeCase[] = [
   {
     name: 'execution_plan',
     scopeIndex: 8,
-    expectedKinds: [
-      'readme',
-      'checksums',
-      'manifest',
-      'execution_plan',
-      'prompt_metadata',
-      'validation',
+    expectedEntries: [
+      { kind: 'readme', path: 'project-001/README.md' },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'execution_plan', path: 'project-001/session-01/execution-plan.txt' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
     ],
     expectSceneFingerprints: true,
     // execution_plan resolves the same session (and its cover id) as the
@@ -159,22 +226,31 @@ const CASES: readonly ScopeCase[] = [
   {
     name: 'complete_project',
     scopeIndex: 9,
-    expectedKinds: [
-      'readme',
-      'checksums',
-      'manifest',
-      'project',
-      'artwork_metadata',
-      'cover_metadata',
-      'cover_prompt',
-      'execution_plan',
-      'group_plan',
-      'prompt_metadata',
-      'validation',
-      'prompt_a',
-      'prompt_b',
-      'prompt_pair',
-      'session_summary',
+    expectedEntries: [
+      { kind: 'readme', path: 'item-09598bb4fca1/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'item-09598bb4fca1/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'item-09598bb4fca1/checksums.sha256' },
+      { kind: 'manifest', path: 'item-09598bb4fca1/manifest.json' },
+      { kind: 'project', path: 'item-09598bb4fca1/project/project.json' },
+      { kind: 'cover_metadata', path: 'item-09598bb4fca1/session-01/cover/cover-metadata.json' },
+      { kind: 'cover_prompt', path: 'item-09598bb4fca1/session-01/cover/cover-prompt.txt' },
+      { kind: 'execution_plan', path: 'item-09598bb4fca1/session-01/execution-plan.txt' },
+      { kind: 'group_plan', path: 'item-09598bb4fca1/session-01/groups/group-01.txt' },
+      {
+        kind: 'prompt_metadata',
+        path: 'item-09598bb4fca1/session-01/metadata/prompt-metadata.json',
+      },
+      { kind: 'validation', path: 'item-09598bb4fca1/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'item-09598bb4fca1/session-01/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'item-09598bb4fca1/session-01/prompts/B/001_tee-front_B.txt' },
+      {
+        kind: 'prompt_pair',
+        path: 'item-09598bb4fca1/session-01/prompts/pairs/001_pair_execution.md',
+      },
+      { kind: 'session_summary', path: 'item-09598bb4fca1/session-01/session-summary.md' },
     ],
     expectSceneFingerprints: true,
     expectCoverHash: true,
@@ -182,40 +258,44 @@ const CASES: readonly ScopeCase[] = [
   {
     name: 'all',
     scopeIndex: 15,
-    expectedKinds: [
-      'readme',
-      'checksums',
-      'manifest',
-      'project',
-      'artwork_metadata',
-      'cover_metadata',
-      'cover_prompt',
-      'execution_plan',
-      'group_plan',
-      'prompt_metadata',
-      'validation',
-      'prompt_a',
-      'prompt_b',
-      'prompt_pair',
-      'session_summary',
+    expectedEntries: [
+      { kind: 'readme', path: 'item-09598bb4fca1/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'item-09598bb4fca1/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'item-09598bb4fca1/checksums.sha256' },
+      { kind: 'manifest', path: 'item-09598bb4fca1/manifest.json' },
+      { kind: 'project', path: 'item-09598bb4fca1/project/project.json' },
+      { kind: 'cover_metadata', path: 'item-09598bb4fca1/session-01/cover/cover-metadata.json' },
+      { kind: 'cover_prompt', path: 'item-09598bb4fca1/session-01/cover/cover-prompt.txt' },
+      { kind: 'execution_plan', path: 'item-09598bb4fca1/session-01/execution-plan.txt' },
+      { kind: 'group_plan', path: 'item-09598bb4fca1/session-01/groups/group-01.txt' },
+      {
+        kind: 'prompt_metadata',
+        path: 'item-09598bb4fca1/session-01/metadata/prompt-metadata.json',
+      },
+      { kind: 'validation', path: 'item-09598bb4fca1/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'item-09598bb4fca1/session-01/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'item-09598bb4fca1/session-01/prompts/B/001_tee-front_B.txt' },
+      {
+        kind: 'prompt_pair',
+        path: 'item-09598bb4fca1/session-01/prompts/pairs/001_pair_execution.md',
+      },
+      { kind: 'session_summary', path: 'item-09598bb4fca1/session-01/session-summary.md' },
     ],
     expectSceneFingerprints: true,
     expectCoverHash: true,
   },
 ];
 
-describe('Scope-to-entry-kind allowlist (F2) and per-scope provenance (F5)', () => {
+describe('Scope-to-entry-kind allowlist (F2/C2) and per-scope provenance (F5/C5)', () => {
   for (const testCase of CASES) {
-    it(`'${testCase.name}' scope: emits exactly the allowlisted entry kinds, no leakage`, () => {
+    it(`'${testCase.name}' scope: emits exactly the expected {path, kind} entries, in order, no leakage`, () => {
       const scope = CANONICAL_SCOPES[testCase.scopeIndex]!;
       const result = packageExport(createPackageFixture({ scope }));
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      const actualKinds = new Set(result.entries.map((entry) => entry.kind));
-      const expectedKinds = new Set(testCase.expectedKinds);
-      const unexpected = [...actualKinds].filter((kind) => !expectedKinds.has(kind));
-      const missing = [...expectedKinds].filter((kind) => !actualKinds.has(kind));
-      expect({ unexpected, missing }).toEqual({ unexpected: [], missing: [] });
+      expect(entriesOf(result)).toEqual(testCase.expectedEntries);
     });
 
     it(`'${testCase.name}' scope: manifest sourceFingerprints are authoritative source data`, () => {
@@ -253,19 +333,206 @@ describe('Scope-to-entry-kind allowlist (F2) and per-scope provenance (F5)', () 
     }
   });
 
-  it('version_snapshot scope carries a real stateHash-derived provenance, no fabricated fallback', () => {
+  it('version_snapshot scope packaging fails closed: VersionSnapshot.stateHash is a project-state digest, never a session fingerprint (Second Corrective C5)', () => {
     const scope = CANONICAL_SCOPES[12]!;
     const result = packageExport(createPackageFixture({ scope }));
+    // ExportManifest.sourceFingerprints.sessionFingerprint is meant to be a
+    // real SessionFingerprint.hash. version_snapshot resolves zero sessions,
+    // so there is none to report; packaging must fail closed with the
+    // existing scope-rejection code rather than substitute the snapshot's
+    // whole-project stateHash (which is a different kind of hash entirely)
+    // or fabricate any other value. No manifest/ZIP bytes are produced.
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_SCOPE_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
+    expect('manifestBytes' in result).toBe(false);
+  });
+});
+
+describe('Second Corrective C7 - additional exact path/kind matrices (partial pair, multi-scene, multi-session, collisions)', () => {
+  it('partial pair (Output A selected, Output B genuinely absent): no prompt_b/prompt_pair leakage', () => {
+    const result = packageExport(
+      createPackageFixture({ omitOutputB: true, scope: CANONICAL_SCOPES[2] }),
+    );
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const manifest = JSON.parse(new TextDecoder().decode(result.manifestBytes)) as {
-      sourceFingerprints: { sessionFingerprint: string };
+    // Identical to the output_a-only entry list: with no real Output B for
+    // this scene, 'pair' scope packaging degrades to an Output-A-only
+    // delivery and must never emit prompt_b or prompt_pair.
+    expect(entriesOf(result)).toEqual(CASES[0]!.expectedEntries);
+  });
+
+  it('multi-scene session export: exact entries with correct multiplicity (2x prompt_a/prompt_b/prompt_pair/group_plan)', () => {
+    const result = packageExport(createMultiScenePackageFixture());
+    expect(result.ok).toBe(true);
+    expect(entriesOf(result)).toEqual([
+      { kind: 'readme', path: 'project-001/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'project-001/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'cover_metadata', path: 'project-001/session-01/cover/cover-metadata.json' },
+      { kind: 'cover_prompt', path: 'project-001/session-01/cover/cover-prompt.txt' },
+      { kind: 'execution_plan', path: 'project-001/session-01/execution-plan.txt' },
+      { kind: 'group_plan', path: 'project-001/session-01/groups/group-01.txt' },
+      { kind: 'group_plan', path: 'project-001/session-01/groups/group-02.txt' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'project-001/session-01/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_a', path: 'project-001/session-01/prompts/A/002_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'project-001/session-01/prompts/B/001_tee-front_B.txt' },
+      { kind: 'prompt_b', path: 'project-001/session-01/prompts/B/002_tee-front_B.txt' },
+      { kind: 'prompt_pair', path: 'project-001/session-01/prompts/pairs/001_pair_execution.md' },
+      { kind: 'prompt_pair', path: 'project-001/session-01/prompts/pairs/002_pair_execution.md' },
+      { kind: 'session_summary', path: 'project-001/session-01/session-summary.md' },
+    ]);
+  });
+
+  it('collision-heavy-names golden fixture: exact entries with deterministic _2 collision suffixing', () => {
+    const golden = createGoldenZipCases().find((entry) => entry.name === 'collision-heavy-names')!;
+    const result = packageExport(golden.input);
+    expect(result.ok).toBe(true);
+    expect(entriesOf(result)).toEqual([
+      { kind: 'readme', path: 'item-09598bb4fca1/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'item-09598bb4fca1/assets/artwork-metadata/artwork-canonical.json',
+      },
+      {
+        kind: 'artwork_metadata',
+        path: 'item-09598bb4fca1/assets/artwork-metadata/artwork-canonical_2.json',
+      },
+      { kind: 'checksums', path: 'item-09598bb4fca1/checksums.sha256' },
+      { kind: 'manifest', path: 'item-09598bb4fca1/manifest.json' },
+      { kind: 'project', path: 'item-09598bb4fca1/project/project.json' },
+      { kind: 'cover_metadata', path: 'item-09598bb4fca1/session-01/cover/cover-metadata.json' },
+      { kind: 'cover_prompt', path: 'item-09598bb4fca1/session-01/cover/cover-prompt.txt' },
+      { kind: 'execution_plan', path: 'item-09598bb4fca1/session-01/execution-plan.txt' },
+      { kind: 'group_plan', path: 'item-09598bb4fca1/session-01/groups/group-01.txt' },
+      { kind: 'group_plan', path: 'item-09598bb4fca1/session-01/groups/group-02.txt' },
+      {
+        kind: 'prompt_metadata',
+        path: 'item-09598bb4fca1/session-01/metadata/prompt-metadata.json',
+      },
+      { kind: 'validation', path: 'item-09598bb4fca1/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'item-09598bb4fca1/session-01/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_a', path: 'item-09598bb4fca1/session-01/prompts/A/002_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'item-09598bb4fca1/session-01/prompts/B/001_tee-front_B.txt' },
+      { kind: 'prompt_b', path: 'item-09598bb4fca1/session-01/prompts/B/002_tee-front_B.txt' },
+      {
+        kind: 'prompt_pair',
+        path: 'item-09598bb4fca1/session-01/prompts/pairs/001_pair_execution.md',
+      },
+      {
+        kind: 'prompt_pair',
+        path: 'item-09598bb4fca1/session-01/prompts/pairs/002_pair_execution.md',
+      },
+      { kind: 'session_summary', path: 'item-09598bb4fca1/session-01/session-summary.md' },
+    ]);
+  });
+
+  it('multi-session complete_project export: exact entries across two sessions, one shared artwork deduplicated', () => {
+    const project = structuredClone(CANONICAL_PROJECT) as Project;
+    const original = project.sessions[CANONICAL_SESSION_ID]!;
+    const originalScene = original.scenes[CANONICAL_SCENE_ID]!;
+    const secondSessionId = 'session-second' as SessionId;
+    const secondSceneId = 'scene-second' as SceneId;
+    const secondOutputAId = 'output-a-second' as OutputAId;
+    const secondOutputBId = 'output-b-second' as OutputBId;
+    const secondGroupId = 'group-second' as GroupId;
+    const secondCoverId = 'cover-second' as CoverId;
+    const secondScene = {
+      ...originalScene,
+      id: secondSceneId,
+      sessionId: secondSessionId,
+      outputA: { ...originalScene.outputA, id: secondOutputAId, sceneId: secondSceneId },
+      outputB: {
+        ...originalScene.outputB!,
+        id: secondOutputBId,
+        sceneId: secondSceneId,
+        sourceOutputAId: secondOutputAId,
+      },
     };
-    // digest('b') is the canonical fixture's version stateHash.
-    expect(manifest.sourceFingerprints.sessionFingerprint).toBe('b'.repeat(64));
-    const kinds = new Set(result.entries.map((entry) => entry.kind));
-    expect(kinds.has('version_snapshot')).toBe(true);
-    expect(kinds.has('prompt_pair')).toBe(false);
-    expect(kinds.has('prompt_a')).toBe(false);
+    const secondSession = {
+      ...original,
+      id: secondSessionId,
+      scenes: { [secondSceneId]: secondScene },
+      sceneOrder: [secondSceneId],
+      groups: {
+        [secondGroupId]: {
+          ...Object.values(original.groups)[0]!,
+          id: secondGroupId,
+          sessionId: secondSessionId,
+          sceneIds: [secondSceneId],
+        },
+      },
+      cover: {
+        ...original.cover!,
+        id: secondCoverId,
+        sessionId: secondSessionId,
+        sourceSaleImageIds: [secondOutputAId],
+      },
+    };
+    project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
+    project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
+
+    const planResult = createExportPlan({
+      ...CANONICAL_EXPORT_INPUT,
+      source: { ...CANONICAL_EXPORT_INPUT.source, project },
+      scope: { baseScope: ExportScope.All, scopeDetail: 'complete_project' },
+    });
+    expect(planResult.ok).toBe(true);
+    const result = packageExport(
+      packageInputFromFormatter({ planResult, limits: CANONICAL_EXPORT_INPUT.limits }),
+    );
+    expect(result.ok).toBe(true);
+    // secondScene reuses originalScene's outputB.artworkId verbatim (an
+    // unrelated fixture-construction detail, not a defect), so there is only
+    // one distinct artwork across both sessions and therefore exactly one
+    // artwork_metadata entry - proving artwork dedup, not per-output emission.
+    expect(entriesOf(result)).toEqual([
+      { kind: 'readme', path: 'item-09598bb4fca1/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'item-09598bb4fca1/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'item-09598bb4fca1/checksums.sha256' },
+      { kind: 'manifest', path: 'item-09598bb4fca1/manifest.json' },
+      { kind: 'project', path: 'item-09598bb4fca1/project/project.json' },
+      { kind: 'cover_metadata', path: 'item-09598bb4fca1/session-01/cover/cover-metadata.json' },
+      { kind: 'cover_prompt', path: 'item-09598bb4fca1/session-01/cover/cover-prompt.txt' },
+      { kind: 'execution_plan', path: 'item-09598bb4fca1/session-01/execution-plan.txt' },
+      { kind: 'group_plan', path: 'item-09598bb4fca1/session-01/groups/group-01.txt' },
+      {
+        kind: 'prompt_metadata',
+        path: 'item-09598bb4fca1/session-01/metadata/prompt-metadata.json',
+      },
+      { kind: 'validation', path: 'item-09598bb4fca1/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'item-09598bb4fca1/session-01/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'item-09598bb4fca1/session-01/prompts/B/001_tee-front_B.txt' },
+      {
+        kind: 'prompt_pair',
+        path: 'item-09598bb4fca1/session-01/prompts/pairs/001_pair_execution.md',
+      },
+      { kind: 'session_summary', path: 'item-09598bb4fca1/session-01/session-summary.md' },
+      { kind: 'cover_metadata', path: 'item-09598bb4fca1/session-02/cover/cover-metadata.json' },
+      { kind: 'cover_prompt', path: 'item-09598bb4fca1/session-02/cover/cover-prompt.txt' },
+      { kind: 'execution_plan', path: 'item-09598bb4fca1/session-02/execution-plan.txt' },
+      { kind: 'group_plan', path: 'item-09598bb4fca1/session-02/groups/group-01.txt' },
+      {
+        kind: 'prompt_metadata',
+        path: 'item-09598bb4fca1/session-02/metadata/prompt-metadata.json',
+      },
+      { kind: 'validation', path: 'item-09598bb4fca1/session-02/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'item-09598bb4fca1/session-02/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'item-09598bb4fca1/session-02/prompts/B/001_tee-front_B.txt' },
+      {
+        kind: 'prompt_pair',
+        path: 'item-09598bb4fca1/session-02/prompts/pairs/001_pair_execution.md',
+      },
+      { kind: 'session_summary', path: 'item-09598bb4fca1/session-02/session-summary.md' },
+    ]);
   });
 });

@@ -20,6 +20,16 @@ const excludedFilePatterns = [
   /__temporary/i,
   /audit[-_ ]scratch/i,
 ];
+/**
+ * These two root-level bookkeeping files are excluded by exact relative path
+ * (not by directory or generic pattern) because CHECKPOINT-MANIFEST.json
+ * records this script's own combined-hash output for the release, and
+ * CHECKSUMS.txt records this script's sibling per-file listing - both would
+ * otherwise be non-reproducible self-referential cycles (their own bytes
+ * would change the value they are trying to record). Every other file in
+ * the tree, including this script, is still included in the hash.
+ */
+const excludedRelativePaths = new Set(['CHECKPOINT-MANIFEST.json', 'CHECKSUMS.txt']);
 const files = [];
 function walk(directory) {
   for (const name of readdirSync(directory).sort()) {
@@ -27,7 +37,11 @@ function walk(directory) {
     const absolute = resolve(directory, name);
     const stats = statSync(absolute);
     if (stats.isDirectory()) walk(absolute);
-    else if (stats.isFile() && !excludedFilePatterns.some((pattern) => pattern.test(name)))
+    else if (
+      stats.isFile() &&
+      !excludedFilePatterns.some((pattern) => pattern.test(name)) &&
+      !excludedRelativePaths.has(relative(root, absolute).split(sep).join('/'))
+    )
       files.push(absolute);
   }
 }

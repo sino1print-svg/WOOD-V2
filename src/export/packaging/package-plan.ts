@@ -83,27 +83,28 @@ function outputSlugMap(plan: ExportPlan): Map<string, string> {
  * scene has an Output B, regardless of whether Output B is actually selected
  * for this scope (EX §12 First Corrective F2). `output_a`, `group_a`, `cover`,
  * and `execution_plan` scopes must never leak that relationship through a
- * pair file; `group`/`session`/`complete_project`/`all` may only emit one
- * where both Output A and Output B are genuinely selected for that scene;
- * `pair` scope always emits its single scene's execution note.
+ * pair file. Every pair-file-eligible scope - including `pair` itself - may
+ * only emit one where Output A and Output B are both genuinely selected for
+ * that scene, Output B's `sourceOutputAId` actually points at that selected
+ * Output A, and `plan.numbering` independently records the same A/B
+ * relationship (EX §12 Second Corrective C1: a shape-valid but hostile or
+ * partial plan - missing B, or B linked to a different A - must never leak a
+ * pair file merely because `scopeDetail === 'pair'`).
  */
-const PAIR_FILE_SCOPES_REQUIRING_BOTH_SELECTED = new Set([
-  'group',
-  'session',
-  'complete_project',
-  'all',
-]);
+const PAIR_FILE_ELIGIBLE_SCOPES = new Set(['pair', 'group', 'session', 'complete_project', 'all']);
 
 function shouldEmitPairFile(
   plan: ExportPlan,
   sceneId: ExportPlan['numbering'][number]['sceneId'],
 ): boolean {
-  const scopeDetail = plan.scope.scopeDetail;
-  if (scopeDetail === 'pair') return true;
-  if (!PAIR_FILE_SCOPES_REQUIRING_BOTH_SELECTED.has(scopeDetail)) return false;
-  const hasSelectedA = plan.selection.outputsA.some((item) => item.sceneId === sceneId);
-  const hasSelectedB = plan.selection.outputsB.some((item) => item.sceneId === sceneId);
-  return hasSelectedA && hasSelectedB;
+  if (!PAIR_FILE_ELIGIBLE_SCOPES.has(plan.scope.scopeDetail)) return false;
+  const outputA = plan.selection.outputsA.find((item) => item.sceneId === sceneId);
+  const outputB = plan.selection.outputsB.find((item) => item.sceneId === sceneId);
+  if (outputA === undefined || outputB === undefined) return false;
+  if (outputB.sourceOutputAId !== outputA.id) return false;
+  const numberingEntry = plan.numbering.find((item) => item.sceneId === sceneId);
+  if (numberingEntry === undefined) return false;
+  return numberingEntry.outputAId === outputA.id && numberingEntry.outputBId === outputB.id;
 }
 
 /** Builds every content file. Returns `null` on the first unrecoverable resource-limit failure. */
