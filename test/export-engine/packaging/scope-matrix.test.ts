@@ -20,14 +20,16 @@ import type {
   SceneId,
   SessionId,
 } from '../../../src/shared/domain-model';
-import { ExportScope } from '../../../src/shared/domain-model';
+import { ExportScope, GroupBy } from '../../../src/shared/domain-model';
 import type { ExportArtifactKind } from '../../../src/shared/contracts/export-contracts';
 import {
   CANONICAL_EXPORT_INPUT,
   CANONICAL_PROJECT,
+  CANONICAL_SCENE,
   CANONICAL_SCENE_ID,
   CANONICAL_SCOPES,
   CANONICAL_SESSION_ID,
+  createCanonicalMultiSceneExportInput,
 } from '../fixtures';
 import { createGoldenZipCases } from './golden-fixtures';
 import {
@@ -351,7 +353,7 @@ describe('Scope-to-entry-kind allowlist (F2/C2) and per-scope provenance (F5/C5)
 });
 
 describe('Second Corrective C7 - additional exact path/kind matrices (partial pair, multi-scene, multi-session, collisions)', () => {
-  it('partial pair (Output A selected, Output B genuinely absent): no prompt_b/prompt_pair leakage', () => {
+  it('partial pair (Output A selected, Output B genuinely absent): no prompt_b/prompt_pair leakage, exact omission preserved (Third Corrective F5)', () => {
     const result = packageExport(
       createPackageFixture({ omitOutputB: true, scope: CANONICAL_SCOPES[2] }),
     );
@@ -360,6 +362,20 @@ describe('Second Corrective C7 - additional exact path/kind matrices (partial pa
     // this scene, 'pair' scope packaging degrades to an Output-A-only
     // delivery and must never emit prompt_b or prompt_pair.
     expect(entriesOf(result)).toEqual(CASES[0]!.expectedEntries);
+    if (!result.ok) return;
+    const kinds = result.entries.map((entry) => entry.kind);
+    expect(kinds).not.toContain('prompt_b');
+    expect(kinds).not.toContain('prompt_pair');
+    // The exact, non-empty Output B omission must survive into the package
+    // result - not merely be absent from the entry list.
+    expect(result.omissions).toEqual([
+      {
+        artifactKind: 'output_b',
+        entityId: 'scene-001:output_b',
+        field: 'source.project.sessions.جلسة-001.scenes.scene-001.outputB',
+        code: 'EXPORT_SCOPE_002',
+      },
+    ]);
   });
 
   it('multi-scene session export: exact entries with correct multiplicity (2x prompt_a/prompt_b/prompt_pair/group_plan)', () => {
@@ -533,6 +549,64 @@ describe('Second Corrective C7 - additional exact path/kind matrices (partial pa
         path: 'item-09598bb4fca1/session-02/prompts/pairs/001_pair_execution.md',
       },
       { kind: 'session_summary', path: 'item-09598bb4fca1/session-02/session-summary.md' },
+    ]);
+  });
+
+  it('multi-scene GROUP scope (a single group spanning two scenes): exact entries with correct multiplicity, one merged group_plan (Third Corrective F5 - mandatory multi-scene group case)', () => {
+    // A multi-scene SESSION export is not equivalent to a multi-scene GROUP
+    // scope: 'group' scope's content policy never includes cover/execution
+    // plan/session summary/project content, and its single group_plan
+    // entry must cover both member scenes, not one entry per scene.
+    const base = createCanonicalMultiSceneExportInput();
+    const project = structuredClone(base.source.project) as Project;
+    const session = project.sessions[CANONICAL_SESSION_ID]!;
+    const [firstGroupId] = Object.keys(session.groups) as GroupId[];
+    const [firstSceneId, secondSceneId] = session.sceneOrder;
+    // Both multi-scene fixture scenes share `paletteColorId` (only
+    // productId/outputA/outputB/hashes differ between them), so grouping by
+    // color - unlike the fixture's own by-product groups - lets a single
+    // group legitimately span both scenes.
+    const mergedGroup = {
+      ...session.groups[firstGroupId!]!,
+      groupBy: GroupBy.Color,
+      key: CANONICAL_SCENE.paletteColorId,
+      sceneIds: [firstSceneId!, secondSceneId!],
+    };
+    project.sessions = {
+      [CANONICAL_SESSION_ID]: { ...session, groups: { [firstGroupId!]: mergedGroup } },
+    };
+
+    const planResult = createExportPlan({
+      ...base,
+      source: { ...base.source, project },
+      scope: {
+        baseScope: ExportScope.Group,
+        scopeDetail: 'group',
+        sessionId: CANONICAL_SESSION_ID,
+        groupId: firstGroupId!,
+      },
+    });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) return;
+    const result = packageExport(packageInputFromFormatter({ planResult, limits: base.limits }));
+    expect(result.ok).toBe(true);
+    expect(entriesOf(result)).toEqual([
+      { kind: 'readme', path: 'project-001/README.md' },
+      {
+        kind: 'artwork_metadata',
+        path: 'project-001/assets/artwork-metadata/artwork-canonical.json',
+      },
+      { kind: 'checksums', path: 'project-001/checksums.sha256' },
+      { kind: 'manifest', path: 'project-001/manifest.json' },
+      { kind: 'group_plan', path: 'project-001/session-01/groups/group-01.txt' },
+      { kind: 'prompt_metadata', path: 'project-001/session-01/metadata/prompt-metadata.json' },
+      { kind: 'validation', path: 'project-001/session-01/metadata/validation.json' },
+      { kind: 'prompt_a', path: 'project-001/session-01/prompts/A/001_tee-front_A.txt' },
+      { kind: 'prompt_a', path: 'project-001/session-01/prompts/A/002_tee-front_A.txt' },
+      { kind: 'prompt_b', path: 'project-001/session-01/prompts/B/001_tee-front_B.txt' },
+      { kind: 'prompt_b', path: 'project-001/session-01/prompts/B/002_tee-front_B.txt' },
+      { kind: 'prompt_pair', path: 'project-001/session-01/prompts/pairs/001_pair_execution.md' },
+      { kind: 'prompt_pair', path: 'project-001/session-01/prompts/pairs/002_pair_execution.md' },
     ]);
   });
 });

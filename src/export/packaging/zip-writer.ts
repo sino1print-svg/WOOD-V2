@@ -10,6 +10,7 @@
 import { crc32 } from './crc32';
 import { encodeUtf8 } from '../utf8';
 import { compareUtf8 } from '../runtime';
+import { isSafeZipPath } from './path';
 import type { PackageEntry } from './package-entry';
 
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
@@ -68,16 +69,41 @@ export interface ZipWriteResult {
 
 export interface ZipWriteFailure {
   readonly ok: false;
-  readonly reason: 'too_many_entries' | 'entry_too_large' | 'archive_too_large' | 'unsafe_path';
+  readonly reason:
+    | 'too_many_entries'
+    | 'entry_too_large'
+    | 'archive_too_large'
+    | 'unsafe_path'
+    | 'duplicate_path'
+    | 'unordered_entries';
 }
 
-function isSortedByPath(entries: readonly PackageEntry[]): boolean {
+/**
+ * Third Corrective F4: `writeDeterministicZip` is exported through the
+ * packaging public surface and must fail closed on its own, independent of
+ * whatever upstream path-safety checks the caller already ran - it must
+ * never be possible to reach a written ZIP containing an unsafe path (e.g.
+ * `../evil.txt`) merely by calling this function directly.
+ */
+function findUnsafePath(entries: readonly PackageEntry[]): string | null {
+  for (const entry of entries) {
+    if (!isSafeZipPath(entry.path)) return entry.path;
+  }
+  return null;
+}
+
+/** Ordering/duplicate check kept distinct from path-safety (F4): a caller passing unsorted or duplicate-path *safe* paths gets a different, more precise reason than an unsafe path would. */
+function findOrderingFailure(
+  entries: readonly PackageEntry[],
+): 'duplicate_path' | 'unordered_entries' | null {
   for (let index = 1; index < entries.length; index += 1) {
     const previous = entries[index - 1]!.path;
     const current = entries[index]!.path;
-    if (compareUtf8(previous, current) >= 0) return false;
+    const comparison = compareUtf8(previous, current);
+    if (comparison === 0) return 'duplicate_path';
+    if (comparison > 0) return 'unordered_entries';
   }
-  return true;
+  return null;
 }
 
 /**
@@ -94,7 +120,9 @@ export function writeDeterministicZip(
   if (entries.length > maxZipEntries || entries.length > MAX_UINT16) {
     return { ok: false, reason: 'too_many_entries' };
   }
-  if (!isSortedByPath(entries)) return { ok: false, reason: 'unsafe_path' };
+  if (findUnsafePath(entries) !== null) return { ok: false, reason: 'unsafe_path' };
+  const orderingFailure = findOrderingFailure(entries);
+  if (orderingFailure !== null) return { ok: false, reason: orderingFailure };
 
   const writer = new BinaryWriter();
   const centralDirectoryEntries: {

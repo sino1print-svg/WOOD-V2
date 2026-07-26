@@ -90,21 +90,64 @@ function outputSlugMap(plan: ExportPlan): Map<string, string> {
  * relationship (EX §12 Second Corrective C1: a shape-valid but hostile or
  * partial plan - missing B, or B linked to a different A - must never leak a
  * pair file merely because `scopeDetail === 'pair'`).
+ *
+ * Every lookup below is keyed on the complete `(sessionId, sceneId)` identity,
+ * never `sceneId` alone (EX §12 Third Corrective F2): scene IDs are only
+ * guaranteed unique within a session, so a shape-valid hostile plan that
+ * reuses a scene ID across two sessions must never let one session's real
+ * Output A/B or numbering row authorize a pair file in another session.
  */
 const PAIR_FILE_ELIGIBLE_SCOPES = new Set(['pair', 'group', 'session', 'complete_project', 'all']);
 
 function shouldEmitPairFile(
   plan: ExportPlan,
+  sessionId: ExportPlan['numbering'][number]['sessionId'],
   sceneId: ExportPlan['numbering'][number]['sceneId'],
 ): boolean {
   if (!PAIR_FILE_ELIGIBLE_SCOPES.has(plan.scope.scopeDetail)) return false;
-  const outputA = plan.selection.outputsA.find((item) => item.sceneId === sceneId);
-  const outputB = plan.selection.outputsB.find((item) => item.sceneId === sceneId);
+  const outputA = plan.selection.outputsA.find(
+    (item) => item.sessionId === sessionId && item.sceneId === sceneId,
+  );
+  const outputB = plan.selection.outputsB.find(
+    (item) => item.sessionId === sessionId && item.sceneId === sceneId,
+  );
   if (outputA === undefined || outputB === undefined) return false;
   if (outputB.sourceOutputAId !== outputA.id) return false;
-  const numberingEntry = plan.numbering.find((item) => item.sceneId === sceneId);
+  const numberingEntry = plan.numbering.find(
+    (item) => item.sessionId === sessionId && item.sceneId === sceneId,
+  );
   if (numberingEntry === undefined) return false;
   return numberingEntry.outputAId === outputA.id && numberingEntry.outputBId === outputB.id;
+}
+
+/**
+ * Third Corrective F1: a relationally-corrupt plan must fail the whole
+ * packaging operation, not merely suppress `prompt_pair` while still
+ * emitting an Output B prompt under a false source relationship. For every
+ * selected Output B whose (sessionId, sceneId) also has a selected Output A
+ * (scopes that never select Output A for that scene - e.g. `output_b`,
+ * `group_b` - are unaffected, since there is nothing to mismatch against),
+ * `outputB.sourceOutputAId` must equal that Output A's id, and
+ * `plan.numbering` must independently corroborate the same (outputAId,
+ * outputBId) pair for that exact (sessionId, sceneId). Reuses this same
+ * complete-identity matching (never `sceneId` alone) as `shouldEmitPairFile`.
+ */
+export function hasBrokenOutputLinkage(plan: ExportPlan): boolean {
+  for (const outputB of plan.selection.outputsB) {
+    const outputA = plan.selection.outputsA.find(
+      (item) => item.sessionId === outputB.sessionId && item.sceneId === outputB.sceneId,
+    );
+    if (outputA === undefined) continue;
+    if (outputB.sourceOutputAId !== outputA.id) return true;
+    const numberingEntry = plan.numbering.find(
+      (item) => item.sessionId === outputB.sessionId && item.sceneId === outputB.sceneId,
+    );
+    if (numberingEntry === undefined) return true;
+    if (numberingEntry.outputAId !== outputA.id || numberingEntry.outputBId !== outputB.id) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Builds every content file. Returns `null` on the first unrecoverable resource-limit failure. */
@@ -241,7 +284,7 @@ export function buildPackageContentEntries(
     }
 
     const sessionNumbering = plan.numbering.filter(
-      (item) => item.sessionId === sessionId && shouldEmitPairFile(plan, item.sceneId),
+      (item) => item.sessionId === sessionId && shouldEmitPairFile(plan, sessionId, item.sceneId),
     );
     for (const entry of sessionNumbering) {
       const built = buildPairExecutionMarkdown(entry, contentLimits);

@@ -73,6 +73,61 @@ export function localHeaderOffsetFor(bytes: Uint8Array, centralOffset: number): 
   return readU32(bytes, centralOffset + 42);
 }
 
+/** Visits every central-directory record's byte offset, in listed order. */
+export function forEachCentralHeaderOffset(
+  bytes: Uint8Array,
+  visit: (centralOffset: number) => void,
+): void {
+  const eocd = findEocdOffset(bytes);
+  let cursor = readU32(bytes, eocd + 16);
+  const total = readU16(bytes, eocd + 10);
+  for (let index = 0; index < total; index += 1) {
+    visit(cursor);
+    const nameLength = readU16(bytes, cursor + 28);
+    const extraLength = readU16(bytes, cursor + 30);
+    const commentLength = readU16(bytes, cursor + 32);
+    cursor = cursor + 46 + nameLength + extraLength + commentLength;
+  }
+}
+
+/**
+ * Splices `insertedBytes` into the archive at `position` (a byte offset in
+ * `zipBytes`'s original coordinate system, at or before the original central
+ * directory) and repairs every reference that must shift as a result: each
+ * central-directory entry's local header offset (if it was at or after
+ * `position`), and the central directory offset recorded in the EOCD. Used
+ * to prove hidden/unaccounted bytes (a prefix, a gap between two entries, or
+ * bytes just before the central directory) are rejected even though every
+ * individual entry's own recorded fields remain internally consistent.
+ */
+export function insertBytesIntoLocalRegion(
+  zipBytes: Uint8Array,
+  position: number,
+  insertedBytes: Uint8Array,
+): Uint8Array {
+  const before = zipBytes.slice(0, position);
+  const after = zipBytes.slice(position);
+  const combined = new Uint8Array(before.length + insertedBytes.length + after.length);
+  combined.set(before, 0);
+  combined.set(insertedBytes, before.length);
+  combined.set(after, before.length + insertedBytes.length);
+
+  const originalEocd = findEocdOffset(zipBytes);
+  const originalCentralDirectoryOffset = readU32(zipBytes, originalEocd + 16);
+  const newEocdOffset = originalEocd + insertedBytes.length;
+  const newCentralDirectoryOffset = originalCentralDirectoryOffset + insertedBytes.length;
+  writeU32(combined, newEocdOffset + 16, newCentralDirectoryOffset);
+
+  forEachCentralHeaderOffset(combined, (centralOffset) => {
+    const localOffset = readU32(combined, centralOffset + 42);
+    if (localOffset >= position) {
+      writeU32(combined, centralOffset + 42, localOffset + insertedBytes.length);
+    }
+  });
+
+  return combined;
+}
+
 /** Recompute CRC-32 for `bytes` (same polynomial/algorithm as the production writer). */
 export function crc32Of(bytes: Uint8Array): number {
   let crc = 0xffffffff;

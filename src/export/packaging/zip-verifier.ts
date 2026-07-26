@@ -123,6 +123,12 @@ export function parseZip(bytes: Uint8Array): ZipParseResult {
     }
 
     const entries: ParsedZipEntry[] = [];
+    // Third Corrective F3: track each entry's own local-file byte range so
+    // the full local-entries region can be proven to be one exact,
+    // contiguous, canonical sequence with no unaccounted bytes anywhere -
+    // not merely that each entry's *own* referenced range is internally
+    // consistent. Populated in central-directory order, checked afterward.
+    const localRanges: { readonly localHeaderOffset: number; readonly dataEnd: number }[] = [];
     let cursor = centralDirectoryOffset;
     for (let index = 0; index < totalEntries; index += 1) {
       if (readUint32(view, cursor) !== CENTRAL_DIRECTORY_SIGNATURE) {
@@ -160,11 +166,16 @@ export function parseZip(bytes: Uint8Array): ZipParseResult {
       if (versionNeeded !== EXPECTED_VERSION_NEEDED) {
         return { ok: false, reason: 'unexpected_version_needed' };
       }
-      if (externalAttributes !== EXPECTED_EXTERNAL_ATTRIBUTES) {
-        return { ok: false, reason: 'unexpected_external_attributes' };
-      }
+      // Third Corrective F5: check the specific symlink-shaped case *before*
+      // the generic non-zero-attributes rejection, so `symlink_entry_rejected`
+      // is actually reachable (a symlink Unix mode is always non-zero, so the
+      // generic check below would otherwise always fire first and silently
+      // swallow this more precise diagnosis).
       if (((externalAttributes >>> 16) & UNIX_FILE_TYPE_MASK) === UNIX_SYMLINK_TYPE) {
         return { ok: false, reason: 'symlink_entry_rejected' };
+      }
+      if (externalAttributes !== EXPECTED_EXTERNAL_ATTRIBUTES) {
+        return { ok: false, reason: 'unexpected_external_attributes' };
       }
       if (
         compressedSize === ZIP64_SENTINEL_32 ||
@@ -239,6 +250,7 @@ export function parseZip(bytes: Uint8Array): ZipParseResult {
       const data = bytes.slice(dataStart, dataEnd);
       const actualCrc = crc32(data);
       if (actualCrc !== crc) return { ok: false, reason: 'crc_mismatch' };
+      localRanges.push({ localHeaderOffset, dataEnd });
 
       entries.push({
         path,
@@ -254,6 +266,37 @@ export function parseZip(bytes: Uint8Array): ZipParseResult {
     if (cursor !== eocdOffset) {
       return { ok: false, reason: 'trailing_central_directory_bytes' };
     }
+
+    // Third Corrective F3: the local-entries region (byte 0 through
+    // centralDirectoryOffset) must be covered *exactly* by the entries'
+    // own local byte ranges, laid out contiguously with no gaps, no
+    // overlaps, and no bytes before the first header or after the last
+    // entry's data - closing the "hidden bytes between entries or before
+    // the central directory" gap that the per-entry-only checks above
+    // cannot see on their own.
+    const sortedRanges = [...localRanges].sort((a, b) => a.localHeaderOffset - b.localHeaderOffset);
+    const first = sortedRanges[0];
+    if (first !== undefined && first.localHeaderOffset !== 0) {
+      return { ok: false, reason: 'unexpected_archive_prefix' };
+    }
+    for (let index = 1; index < sortedRanges.length; index += 1) {
+      const previous = sortedRanges[index - 1]!;
+      const current = sortedRanges[index]!;
+      if (current.localHeaderOffset === previous.localHeaderOffset) {
+        return { ok: false, reason: 'local_offset_reused' };
+      }
+      if (current.localHeaderOffset < previous.dataEnd) {
+        return { ok: false, reason: 'local_entry_overlap' };
+      }
+      if (current.localHeaderOffset > previous.dataEnd) {
+        return { ok: false, reason: 'local_entry_gap' };
+      }
+    }
+    const last = sortedRanges[sortedRanges.length - 1];
+    if (last !== undefined && last.dataEnd !== centralDirectoryOffset) {
+      return { ok: false, reason: 'bytes_before_central_directory' };
+    }
+
     return { ok: true, entries };
   } catch {
     return { ok: false, reason: 'parse_exception' };

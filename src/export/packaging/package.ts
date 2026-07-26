@@ -28,7 +28,7 @@ import { sha256Bytes } from './checksum';
 import { isValidCreatedAt, isValidExportEngineVersions, isValidExportId } from './input-validation';
 import { buildExportManifest, serializeManifest } from './manifest';
 import type { PackageEntry } from './package-entry';
-import { buildPackageContentEntries } from './package-plan';
+import { buildPackageContentEntries, hasBrokenOutputLinkage } from './package-plan';
 import type {
   ExportPackageInput,
   ExportPackageResult,
@@ -156,6 +156,20 @@ function packageExportInternal(
     if (plan.scope.scopeDetail === 'version_snapshot') {
       return failureResult(
         [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope')!],
+        warnings,
+        plan.omissions,
+      );
+    }
+
+    // Third Corrective F1: a shape-valid but relationally-corrupt plan (an
+    // Output B whose declared sourceOutputAId, or the numbering row for its
+    // scene, does not actually match the selected Output A for that same
+    // session+scene) must fail the whole packaging operation before any
+    // content is built - never package an Output B prompt under a false A/B
+    // relationship just because the pair-execution file alone is suppressed.
+    if (hasBrokenOutputLinkage(plan)) {
+      return failureResult(
+        [registeredExportFailure('EXPORT_LINK_001', 'packaging.selection.outputsB')!],
         warnings,
         plan.omissions,
       );

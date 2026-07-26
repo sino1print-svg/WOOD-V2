@@ -17,15 +17,27 @@ import {
   ExportFormat,
   ExportScope,
   ValidationSeverity,
+  type CoverId,
+  type GroupId,
   type OutputAId,
+  type OutputBId,
+  type Project,
+  type SessionId,
 } from '../../../src/shared/domain-model';
 import { APP_CONFIG } from '../../../src/config/app-config';
-import { CANONICAL_EXPORT_INPUT, CANONICAL_SCOPES, CANONICAL_SESSION_ID } from '../fixtures';
-import { createPackageFixture } from './fixtures';
+import {
+  CANONICAL_EXPORT_INPUT,
+  CANONICAL_PROJECT,
+  CANONICAL_SCENE_ID,
+  CANONICAL_SCOPES,
+  CANONICAL_SESSION_ID,
+} from '../fixtures';
+import { createPackageFixture, packageInputFromFormatter } from './fixtures';
 import {
   crc32Of,
   findCentralHeaderOffset,
   findEocdOffset,
+  insertBytesIntoLocalRegion,
   localHeaderOffsetFor,
   readU16,
   readU32,
@@ -254,7 +266,7 @@ describe('Second Corrective C1 - pair-file emission requires a genuine, cross-ve
     expect(kinds.filter((kind) => kind === 'prompt_pair')).toHaveLength(1);
   });
 
-  it('hostile plan with Output B linked to a different Output A: no pair file emitted (fails closed)', () => {
+  it('hostile plan with Output B linked to a different Output A: fails closed, no bytes (Third Corrective F1)', () => {
     const planResult = pairPlanResult();
     const clonedPlan = structuredClone(planResult.value);
     expect(clonedPlan.selection.outputsB).toHaveLength(1);
@@ -272,18 +284,17 @@ describe('Second Corrective C1 - pair-file emission requires a genuine, cross-ve
       },
     };
     const result = packageExport(packageInputFor({ ok: true, value: mutatedPlan }));
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // prompt_a/prompt_b are still independently selected/emitted (content
-    // policy, not linkage, governs their inclusion); only the pair file -
-    // which asserts a real A/B relationship - must be suppressed.
-    const kinds = result.entries.map((entry) => entry.kind);
-    expect(kinds).toContain('prompt_a');
-    expect(kinds).toContain('prompt_b');
-    expect(kinds).not.toContain('prompt_pair');
+    // A relationally-corrupt B->A link must fail the whole packaging
+    // operation, not merely suppress prompt_pair while still emitting an
+    // Output B prompt under a false source relationship.
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
+    expect('manifestBytes' in result).toBe(false);
   });
 
-  it('hostile plan whose numbering disagrees with an otherwise-consistent A/B selection: no pair file emitted', () => {
+  it('hostile plan whose numbering disagrees with an otherwise-consistent A/B selection: fails closed, no bytes', () => {
     const planResult = pairPlanResult();
     const clonedPlan = structuredClone(planResult.value);
     expect(clonedPlan.numbering.length).toBeGreaterThan(0);
@@ -299,12 +310,184 @@ describe('Second Corrective C1 - pair-file emission requires a genuine, cross-ve
       ),
     };
     const result = packageExport(packageInputFor({ ok: true, value: mutatedPlan }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect('zipBytes' in result).toBe(false);
+  });
+
+  it('canonical (non-hostile) plans with Output B selected but no Output A selected for that scene are unaffected (e.g. output_b/group_b policy)', () => {
+    // Output A is legitimately absent from `selection.outputsA` for scopes
+    // whose content policy never selects it (output_b/group_b); this must
+    // never be mistaken for a broken linkage.
+    const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: CANONICAL_SCOPES[1]! });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) return;
+    expect(planResult.value.selection.outputsA).toHaveLength(0);
+    expect(planResult.value.selection.outputsB).toHaveLength(1);
+    const result = packageExport(packageInputFor(planResult));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const kinds = result.entries.map((entry) => entry.kind);
-    expect(kinds).toContain('prompt_a');
-    expect(kinds).toContain('prompt_b');
-    expect(kinds).not.toContain('prompt_pair');
+    expect(result.entries.some((entry) => entry.kind === 'prompt_b')).toBe(true);
+  });
+});
+
+describe('Third Corrective F2 - pair eligibility keyed by complete session+scene identity (no cross-session leakage)', () => {
+  /**
+   * Builds a real, planner-produced two-session `complete_project` plan where
+   * BOTH sessions' single scene deliberately reuses the exact same
+   * `SceneId` value - shape-valid (scene IDs are only guaranteed unique
+   * within a session, per the domain model), but adversarial. Session 2's
+   * own selected Output A/B are then stripped from the resulting plan (its
+   * `plan.numbering` row - built independently of selection - still exists
+   * and still carries the reused scene id), reproducing the exact "no
+   * selected Output A or B for session 2" hostile scenario from the audit.
+   */
+  function crossSessionHostilePlan() {
+    const project = structuredClone(CANONICAL_PROJECT) as Project;
+    const original = project.sessions[CANONICAL_SESSION_ID]!;
+    const originalScene = original.scenes[CANONICAL_SCENE_ID]!;
+    const secondSessionId = 'session-second' as SessionId;
+    const secondOutputAId = 'output-a-second' as OutputAId;
+    const secondOutputBId = 'output-b-second' as OutputBId;
+    // Deliberately reuse CANONICAL_SCENE_ID (not a fresh id) for the second
+    // session's only scene - shape-valid, since scene ids are only unique
+    // within a session - while every other identity (session, group, cover,
+    // Output A/B ids) is fresh and distinct, so this is otherwise a normal,
+    // internally-consistent second session.
+    const secondScene = {
+      ...originalScene,
+      sessionId: secondSessionId,
+      outputA: { ...originalScene.outputA, id: secondOutputAId, sceneId: CANONICAL_SCENE_ID },
+      outputB: {
+        ...originalScene.outputB!,
+        id: secondOutputBId,
+        sceneId: CANONICAL_SCENE_ID,
+        sourceOutputAId: secondOutputAId,
+      },
+    };
+    const secondGroupId = 'group-second' as GroupId;
+    const secondSession = {
+      ...original,
+      id: secondSessionId,
+      scenes: { [CANONICAL_SCENE_ID]: secondScene },
+      groups: {
+        [secondGroupId]: {
+          ...Object.values(original.groups)[0]!,
+          id: secondGroupId,
+          sessionId: secondSessionId,
+          sceneIds: [CANONICAL_SCENE_ID],
+        },
+      },
+      cover: {
+        ...original.cover!,
+        id: 'cover-second' as CoverId,
+        sessionId: secondSessionId,
+        sourceSaleImageIds: [secondOutputAId],
+      },
+    };
+    project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
+    project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
+
+    const planResult = createExportPlan({
+      ...CANONICAL_EXPORT_INPUT,
+      source: { ...CANONICAL_EXPORT_INPUT.source, project },
+      scope: { baseScope: ExportScope.All, scopeDetail: 'complete_project' },
+    });
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+
+    // Both sessions currently have their OWN genuinely-selected, genuinely-
+    // linked Output A/B for the reused scene id (planner-produced, fully
+    // consistent) - confirm that before stripping session 2's selection.
+    const session2A = planResult.value.selection.outputsA.filter(
+      (item) => item.sessionId === secondSessionId,
+    );
+    const session2B = planResult.value.selection.outputsB.filter(
+      (item) => item.sessionId === secondSessionId,
+    );
+    expect(session2A).toHaveLength(1);
+    expect(session2B).toHaveLength(1);
+    expect(
+      planResult.value.numbering.filter((item) => item.sceneId === CANONICAL_SCENE_ID),
+    ).toHaveLength(2);
+
+    // Now strip session 2's own selected A/B, leaving its numbering row
+    // (which still carries the reused scene id) as the only remaining trace.
+    const hostilePlan = {
+      ...planResult.value,
+      selection: {
+        ...planResult.value.selection,
+        outputsA: planResult.value.selection.outputsA.filter(
+          (item) => item.sessionId !== secondSessionId,
+        ),
+        outputsB: planResult.value.selection.outputsB.filter(
+          (item) => item.sessionId !== secondSessionId,
+        ),
+      },
+    };
+    return { hostilePlan, secondSessionId };
+  }
+
+  it('a shape-valid hostile plan reusing a sceneId across two sessions never lets session 1 authorize a pair file in session 2', () => {
+    const { hostilePlan } = crossSessionHostilePlan();
+    const result = packageExport(
+      packageInputFromFormatter({
+        planResult: { ok: true, value: hostilePlan },
+        limits: APP_CONFIG.limits.export,
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // session-02 must carry no prompt_pair, prompt_a, or prompt_b - its own
+    // selection was stripped, and session 1's real A/B/pair must never be
+    // borrowed for it merely because the scene id happens to match.
+    const session02Kinds = result.entries
+      .filter((entry) => entry.path.includes('/session-02/'))
+      .map((entry) => entry.kind);
+    expect(session02Kinds).not.toContain('prompt_pair');
+    expect(session02Kinds).not.toContain('prompt_a');
+    expect(session02Kinds).not.toContain('prompt_b');
+    // Session 1's own legitimate pair is unaffected.
+    const session01Kinds = result.entries
+      .filter((entry) => entry.path.includes('/session-01/'))
+      .map((entry) => entry.kind);
+    expect(session01Kinds).toContain('prompt_pair');
+    expect(session01Kinds).toContain('prompt_a');
+    expect(session01Kinds).toContain('prompt_b');
+  });
+
+  it('duplicate/conflicting numbering rows for the same reused scene id across sessions do not cross-contaminate either session', () => {
+    const { hostilePlan } = crossSessionHostilePlan();
+    // Additionally corrupt session 2's numbering row to point at session 1's
+    // real output ids directly (an even more direct forgery attempt).
+    const session1Numbering = hostilePlan.numbering.find(
+      (item) => item.sessionId === CANONICAL_SESSION_ID,
+    )!;
+    const forgedPlan = {
+      ...hostilePlan,
+      numbering: hostilePlan.numbering.map((entry) =>
+        entry.sessionId !== CANONICAL_SESSION_ID
+          ? {
+              ...entry,
+              outputAId: session1Numbering.outputAId,
+              outputBId: session1Numbering.outputBId,
+            }
+          : entry,
+      ),
+    };
+    const result = packageExport(
+      packageInputFromFormatter({
+        planResult: { ok: true, value: forgedPlan },
+        limits: APP_CONFIG.limits.export,
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const session02Kinds = result.entries
+      .filter((entry) => entry.path.includes('/session-02/'))
+      .map((entry) => entry.kind);
+    expect(session02Kinds).not.toContain('prompt_pair');
   });
 });
 
@@ -744,7 +927,11 @@ describe('First Corrective F4 - local/central header reconciliation and fixed me
     const nameStart = localOffset + 30;
     // Flip the last character of the local filename only (same length).
     bytes[nameStart + nameLength - 1] = bytes[nameStart + nameLength - 1]! ^ 0x20;
-    expect(verifyPackageZip(bytes, ledgerFor(result)).ok).toBe(false);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('local_central_filename_mismatch');
   });
 
   it('detects local general-purpose flag differing from central flag', () => {
@@ -755,7 +942,11 @@ describe('First Corrective F4 - local/central header reconciliation and fixed me
     const centralOffset = findCentralHeaderOffset(bytes, 'README.md');
     const localOffset = localHeaderOffsetFor(bytes, centralOffset);
     writeU16(bytes, localOffset + 6, 0x0000);
-    expect(verifyPackageZip(bytes, ledgerFor(result)).ok).toBe(false);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('local_central_flag_mismatch');
   });
 
   it('detects a non-fixed general-purpose flag shared by both headers', () => {
@@ -767,7 +958,11 @@ describe('First Corrective F4 - local/central header reconciliation and fixed me
     const localOffset = localHeaderOffsetFor(bytes, centralOffset);
     writeU16(bytes, localOffset + 6, 0x0000);
     writeU16(bytes, centralOffset + 8, 0x0000);
-    expect(verifyPackageZip(bytes, ledgerFor(result)).ok).toBe(false);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('unexpected_general_purpose_flag');
   });
 
   it('detects a non-zero central extra field length', () => {
@@ -777,7 +972,11 @@ describe('First Corrective F4 - local/central header reconciliation and fixed me
     const bytes = result.zipBytes.slice();
     const centralOffset = findCentralHeaderOffset(bytes, 'README.md');
     writeU16(bytes, centralOffset + 30, 4);
-    expect(verifyPackageZip(bytes, ledgerFor(result)).ok).toBe(false);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('central_extra_field_present');
   });
 
   it('detects a non-zero local extra field length', () => {
@@ -788,7 +987,11 @@ describe('First Corrective F4 - local/central header reconciliation and fixed me
     const centralOffset = findCentralHeaderOffset(bytes, 'README.md');
     const localOffset = localHeaderOffsetFor(bytes, centralOffset);
     writeU16(bytes, localOffset + 28, 4);
-    expect(verifyPackageZip(bytes, ledgerFor(result)).ok).toBe(false);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('local_extra_field_present');
   });
 
   it('detects a non-zero file comment length', () => {
@@ -798,7 +1001,11 @@ describe('First Corrective F4 - local/central header reconciliation and fixed me
     const bytes = result.zipBytes.slice();
     const centralOffset = findCentralHeaderOffset(bytes, 'README.md');
     writeU16(bytes, centralOffset + 32, 4);
-    expect(verifyPackageZip(bytes, ledgerFor(result)).ok).toBe(false);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('central_file_comment_present');
   });
 
   it('detects central-directory trailing bytes', () => {
@@ -815,10 +1022,14 @@ describe('First Corrective F4 - local/central header reconciliation and fixed me
     const newEocd = eocd + junkSize;
     const originalSize = readU32(original, eocd + 12);
     writeU32(bytes, newEocd + 12, originalSize + junkSize);
-    expect(verifyPackageZip(bytes, ledgerFor(result)).ok).toBe(false);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('trailing_central_directory_bytes');
   });
 
-  it('detects a symlink-shaped external attributes value', () => {
+  it('detects a symlink-shaped external attributes value with the precise symlink_entry_rejected reason (Third Corrective F5)', () => {
     const result = packageExport(createPackageFixture());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -826,7 +1037,31 @@ describe('First Corrective F4 - local/central header reconciliation and fixed me
     const centralOffset = findCentralHeaderOffset(bytes, 'README.md');
     // Unix mode 0o120777 (symlink, S_IFLNK) in the upper 16 bits.
     writeU32(bytes, centralOffset + 38, (0o120777 << 16) >>> 0);
-    expect(verifyPackageZip(bytes, ledgerFor(result)).ok).toBe(false);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    // The symlink-specific check now runs before the generic non-zero
+    // external-attributes check, so this exact reason is actually reachable
+    // rather than permanently shadowed by a more generic one.
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('symlink_entry_rejected');
+  });
+
+  it('detects a non-zero, non-symlink external attributes value with the generic unexpected_external_attributes reason', () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const bytes = result.zipBytes.slice();
+    const centralOffset = findCentralHeaderOffset(bytes, 'README.md');
+    // A non-zero external attributes value whose Unix file-type bits (upper
+    // 16 bits, masked with 0xf000) are NOT S_IFLNK - a regular-file mode
+    // with an unexpected read-only/DOS-archive bit set, not a symlink.
+    writeU32(bytes, centralOffset + 38, (0o100644 << 16) >>> 0);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('unexpected_external_attributes');
   });
 });
 
@@ -881,6 +1116,179 @@ describe('Second Corrective C4 - full 16-bit "version made by" platform lock', (
     const centralOffset = findCentralHeaderOffset(bytes, 'README.md');
     writeU16(bytes, centralOffset + 4, 0x0014);
     expect(verifyPackageZip(bytes, ledgerFor(result)).ok).toBe(true);
+  });
+});
+
+describe('Third Corrective F3 - complete canonical local-byte-range coverage (no hidden/unaccounted bytes)', () => {
+  it('accepts the unmodified canonical archive (baseline - full coverage holds)', () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(verifyPackageZip(result.zipBytes, ledgerFor(result)).ok).toBe(true);
+  });
+
+  it('rejects hidden ASCII secret bytes inserted just before the central directory', () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const eocd = findEocdOffset(result.zipBytes);
+    const centralDirectoryOffset = readU32(result.zipBytes, eocd + 16);
+    const hidden = new TextEncoder().encode('SECRET-HIDDEN-BYTES');
+    const mutated = insertBytesIntoLocalRegion(result.zipBytes, centralDirectoryOffset, hidden);
+    const verification = verifyPackageZip(mutated, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('bytes_before_central_directory');
+  });
+
+  it('rejects a hidden PNG signature inserted just before the central directory', () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const eocd = findEocdOffset(result.zipBytes);
+    const centralDirectoryOffset = readU32(result.zipBytes, eocd + 16);
+    const pngSignature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const mutated = insertBytesIntoLocalRegion(
+      result.zipBytes,
+      centralDirectoryOffset,
+      pngSignature,
+    );
+    const verification = verifyPackageZip(mutated, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('bytes_before_central_directory');
+  });
+
+  it("rejects bytes inserted between two local entries, even though every entry's own recorded range stays internally consistent", () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // README.md is the first entry (byte-lexicographically smallest path);
+    // insert right at its data end, immediately before the next entry's
+    // local header - the entries before/at the insertion point are
+    // untouched, everything after (including the pushed-forward next entry
+    // and the central directory) is offset-repaired by the helper.
+    const centralOffset = findCentralHeaderOffset(result.zipBytes, 'README.md');
+    const localOffset = localHeaderOffsetFor(result.zipBytes, centralOffset);
+    const nameLength = readU16(result.zipBytes, localOffset + 26);
+    const uncompressedSize = readU32(result.zipBytes, centralOffset + 24);
+    const dataEnd = localOffset + 30 + nameLength + uncompressedSize;
+    const gapBytes = new TextEncoder().encode('GAP-BYTES-HERE');
+    const mutated = insertBytesIntoLocalRegion(result.zipBytes, dataEnd, gapBytes);
+    const verification = verifyPackageZip(mutated, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('local_entry_gap');
+  });
+
+  it('rejects a prefix inserted before the first local header, even with every offset otherwise repaired', () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const prefixBytes = new TextEncoder().encode('UNEXPECTED-PREFIX');
+    const mutated = insertBytesIntoLocalRegion(result.zipBytes, 0, prefixBytes);
+    const verification = verifyPackageZip(mutated, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+    if (verification.ok) return;
+    expect(verification.reason).toBe('structural');
+    expect(verification.detail).toBe('unexpected_archive_prefix');
+  });
+
+  it('rejects a reused local header offset (two central records pointing at the same local entry)', () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const bytes = result.zipBytes.slice();
+    const readmeCentral = findCentralHeaderOffset(bytes, 'README.md');
+    const checksumsCentral = findCentralHeaderOffset(bytes, 'checksums.sha256');
+    const readmeLocalOffset = localHeaderOffsetFor(bytes, readmeCentral);
+    // Repoint checksums.sha256's central record at README.md's local entry -
+    // a full local-header/name/CRC/size mismatch would already be caught by
+    // the earlier per-entry reconciliation checks, so this specifically
+    // proves the canonical-coverage pass is reached as an additional,
+    // independent layer (both checks correctly reject this archive).
+    writeU32(bytes, checksumsCentral + 42, readmeLocalOffset);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+  });
+
+  it("rejects overlapping local ranges (a later local header starting inside an earlier entry's data)", () => {
+    const result = packageExport(createPackageFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const bytes = result.zipBytes.slice();
+    const readmeCentral = findCentralHeaderOffset(bytes, 'README.md');
+    const checksumsCentral = findCentralHeaderOffset(bytes, 'checksums.sha256');
+    const readmeLocalOffset = localHeaderOffsetFor(bytes, readmeCentral);
+    const readmeNameLength = readU16(bytes, readmeLocalOffset + 26);
+    // Point checksums.sha256's local header one byte into README.md's data
+    // region - overlapping, not reused, and not a simple gap.
+    writeU32(bytes, checksumsCentral + 42, readmeLocalOffset + 30 + readmeNameLength + 1);
+    const verification = verifyPackageZip(bytes, ledgerFor(result));
+    expect(verification.ok).toBe(false);
+  });
+});
+
+describe('Third Corrective F4 - writeDeterministicZip rejects unsafe paths directly (public writer, independent of any caller)', () => {
+  function entryAt(path: string): PackageEntry {
+    return makeEntry(path, 'readme', 'markdown', 'text/markdown;charset=utf-8', encode('# x'));
+  }
+
+  const UNSAFE_PATHS = [
+    '../evil.txt',
+    'a/../../evil.txt',
+    '/absolute.txt',
+    'C:/drive.txt',
+    '\\\\server\\share\\file.txt',
+    'a\\b.txt',
+    'a/./b.txt',
+    'a//b.txt',
+    'a\u0000b.txt',
+  ];
+
+  for (const unsafePath of UNSAFE_PATHS) {
+    it(`rejects ${JSON.stringify(unsafePath)} with no ZIP bytes produced`, () => {
+      const result = writeDeterministicZip([entryAt(unsafePath)], 1000, 50_000_000);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toBe('unsafe_path');
+      expect('bytes' in result).toBe(false);
+    });
+  }
+
+  it('rejects a duplicate path with a distinct reason from unsafe_path', () => {
+    const result = writeDeterministicZip(
+      [entryAt('proj/a.txt'), entryAt('proj/a.txt')],
+      1000,
+      50_000_000,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('duplicate_path');
+  });
+
+  it('rejects an unsorted path list with a distinct reason from unsafe_path', () => {
+    const result = writeDeterministicZip(
+      [entryAt('proj/b.txt'), entryAt('proj/a.txt')],
+      1000,
+      50_000_000,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('unordered_entries');
+  });
+
+  it('accepts a valid, safe Unicode path deterministically', () => {
+    const path = 'proj/session-01/prompts/A/\u{1F4C1}_\u0645\u0644\u0641_A.txt';
+    const first = writeDeterministicZip([entryAt(path)], 1000, 50_000_000);
+    const second = writeDeterministicZip([entryAt(path)], 1000, 50_000_000);
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(second.bytes).toEqual(first.bytes);
   });
 });
 
