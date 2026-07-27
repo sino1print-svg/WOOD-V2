@@ -1,76 +1,100 @@
 {
-  "package": "mockup-photoshoot-director-phase10-batch10.4-consolidated-final-deficiency-closure",
-  "phase": "Phase 10 — Batch 10.4 — Consolidated Final Deficiency Closure (Frozen Acceptance Contract for Deterministic Packaging)",
-  "status": "PHASE 10 — BATCH 10.4 CONSOLIDATED FINAL CORRECTIVE DEFICIENCY CLOSURE COMPLETE — READY FOR INDEPENDENT AUDIT",
-  "created_at_utc": "2026-07-26T21:20:00Z",
+  "package": "mockup-photoshoot-director-phase10-batch10.4-final-controlled-merge",
+  "phase": "Phase 10 — Batch 10.4 — Final Controlled Merge and Closure",
+  "status": "PHASE 10 — BATCH 10.4 FINAL CONTROLLED MERGE COMPLETE — READY FOR INDEPENDENT AUDIT",
+  "created_at_utc": "2026-07-27T00:30:00Z",
   "contents": "Complete runnable working tree (git-ready). node_modules/dist/.git excluded; run npm ci to install.",
-  "starting_checkpoint": {
-    "filename": "mockup-photoshoot-director-phase10-batch10.4-consolidated-final-corrective.zip",
-    "sha256": "3ab10163f24929ffc36fc9f94499abe0ffeb856c69f8c9c6d3b43045a7bfe2f6",
+  "commit": "e466d29",
+  "commit_note": "This field is necessarily written before the commit that embeds it is finalized (a commit's hash depends on its own tree, which includes this file), so it may be one amendment behind the true final hash. The outer delivery ZIP's own file comment and the accompanying .zip.sha256/Completion Report are computed after the commit is final and are authoritative.",
+  "base_programmer_1_checkpoint": {
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-consolidated-final-corrective-deficiency-closure.zip",
+    "sha256": "a1b94d6f1ad0ab9906c3180f012d32cc27c5d1f121292bbbd6f9695d74557ed5",
+    "declared_commit": "b5fe0f72e5dff8586e22ba78ca4b7f149ce24ce6",
+    "role": "Sole implementation base, per the Two-Programmer-Comparison audit's recommendation.",
     "verified_on_receipt": true
   },
-  "corrective_scope": "Executes the Consolidated Final Deficiency Closure specification, responding to findings F1-F11 of the independent audit against the Batch 10.4 Consolidated Final Corrective. No Batch 10.5 work performed. No UI, clipboard, download, backup, restore, Prompt Pack, Export Center, rendered-image, persistence-write, or browser-filesystem work performed.",
+  "reference_programmer_2_checkpoint": {
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-consolidated-final-deficiency-closure.zip",
+    "sha256": "28d156ceff2b1d1ecc6d0c45af77fa3e99684324a08f0e90f10d7fe0089618eb",
+    "declared_commit": "0e247751df21c753e4330ed1974ca411172bc813",
+    "role": "Read-only reference only. Never used as an implementation base or replacement. Only the four named improvements in §8.1 of the merge instructions were ported, each re-implemented inside Programmer 1's architecture rather than copied wholesale.",
+    "verified_on_receipt": true
+  },
+  "merge_scope": "Controlled merge closing the three blocking findings (F1/F2/F3) of the Deficiency-Closure Independent Audit against Programmer 1's checkpoint, plus the four explicitly allowed ports from Programmer 2 (§8.1). No Batch 10.5, UI, Clipboard, Download, Backup/Restore, Prompt Pack, Export Center, persistence-write, browser-filesystem, or external-integration implementation was started.",
   "findings_addressed": {
-    "F1": "validatePackagePlanIntegrity now returns { ok: true, value: ValidatedPackagePlanIndex } on success - five genuine nested ReadonlyMaps (numberingBySessionAndScene, outputABySessionAndScene, outputBBySessionAndScene, groupsBySessionAndId, groupNumberingBySessionAndGroup), never a string-concatenated composite key. IDENTITY_KEY_SEPARATOR/identityKey/groupByIdentity are removed entirely. shouldEmitPairFile and buildPackageContentEntries's per-session prompt/pair-file loops now consume these validated maps directly and never re-run .find()/.filter() against the raw plan. Selected-A and selected-B checking are two separate stages (validateSelectedOutputA/validateSelectedOutputB) with two separate failure fields, so an Output A mismatch is never reported under the Output B field.",
-    "F2": "Exact per-condition failure fields replace the prior generic packaging.scope/packaging.selection.outputsB catch-alls: packaging.scope.sessionIds/groupIds/sceneIds/outputAIds/outputBIds/coverIds/versionIds, packaging.numbering, packaging.groupNumbering, packaging.selection.outputsA, packaging.selection.outputsB - matching the deficiency-closure §4 table exactly. The new expectBlockingFailure test helper asserts exact result.failures/warnings/omissions array equality (derived from the actual mutated plan via blockingFailureFor), not .some(code).",
-    "F3": "Numbering validation now independently proves (a) the row's session is a real, in-scope session and (b) the row's scene is genuinely valid for that exact session (via a canonical Map<SessionId, Set<SceneId>> built before numbering validation runs), and (c) no two rows share the same (sessionId, sceneId) identity - all three checked before, and independently of, the canonical A/B id-sequence comparison. Both audit reproductions (fake scene in a valid session with the id sequence preserved; duplicate identity with distinct canonical A ids preserved) are now rejected, plus new out-of-scope-scene-row and extra-fake-row matrix cases at first/middle/last position.",
-    "F4": "Selected Output A/B validation enforces that selection.outputsA/outputsB.map(id) equals the exact ordered subsequence of scope.outputAIds/outputBIds remaining after approved-omission filtering (omissions read only from plan.omissions by exact artifactKind+entityId match, never inferred from absence). A missing selected artifact with no matching omission now fails closed instead of silently degrading the ZIP; a real planner-produced partial pair with its genuine omission still succeeds with the omission preserved and no B/pair file.",
-    "F5": "Selected Output A must agree exactly with its numbering row's outputAId, sceneNumber, and outputALabel (not merely the id), enforce one-per-identity and one-identity-per-id, and match the canonical ordered subsequence above - closing the field-mismatch gap and the reversed/reordered-array gap in one check.",
-    "F6": "Selected Output B mirrors F5 (outputBId, sourceOutputAId, sceneNumber, outputBLabel, sourceOutputALabel all checked against the numbering row) plus - whenever policy.outputA also holds - requires the paired selected Output A to actually exist and agree with sourceOutputAId; skipped entirely when policy.outputB is false (the frozen output_a/group_a exception).",
-    "F7": "Group-numbering validation, when policy.groupMetadata selects real group metadata, derives the full expected ordered row sequence independently from each selected group's own authoritative groupNumber and exact sceneIds order (never from plan.groupNumbering's own fields) and requires the entire sequence to match exactly - closing the hostile groupNumber, hostile groupSceneNumber (with both A and B labels updated consistently), and physical-row-reversal reproductions, none of which a per-row self-consistency check could catch. When policy.groupMetadata is false but groupNumbering rows still exist structurally (the execution_plan scope), the pre-existing per-row scope-membership/numbering-linkage/self-consistency check remains as a fallback, since there is no authoritative selected-group source to derive an exact sequence from in that case.",
-    "F8": "scripts/verify-golden-zips-external.mts (renamed from .mjs) plus the new scripts/zip-external-verification.mts parse the extracted checksums.sha256 into an ordered path->digest map (rejecting BOM/CR/malformed lines, non-strict-increasing order, duplicate or self-referencing paths, and any path-set mismatch against the real extracted directory) and validate the extracted manifest.json with the same authoritative validateExportManifestShape schema validator packaging itself uses, reconciling includedFiles/fileSizes/checksums against the real extracted directory - every digest and size recomputed fresh from the extracted bytes, never merely compared to the in-memory packaging ledger. Manually verified: a flipped digest hex character, a reordered checksums.sha256 line pair, and a tampered manifest.json fileSizes entry are each independently caught while the in-memory ledger is untouched.",
-    "F9": "test/export-engine/packaging/golden-zip-dump.test.ts no longer uses it.skipIf - it always performs the real dump (to GOLDEN_ZIP_DUMP_DIR when the external script supplies one, otherwise to a self-created-and-removed temp directory) and asserts on its own output, so npm run test/verify/verify:full report zero skipped tests. The oracle in consolidated-final-corrective.test.ts adds mandatory matrices for F3 (independent numbering/scene-membership), F4 (omission-evidence reconciliation), F5/F6 (selected Output A/B field and order reconciliation), F7 (authoritative group-numbering exactness, including the previously-incomplete groupSceneNumber case now updating both A and B labels), and F10 (ZIP-writer hostile-runtime input), each using the new expectBlockingFailure exact-array helper.",
-    "F10": "writeDeterministicZip never throws on hostile runtime input - null/undefined/non-array entries, sparse arrays, throwing Proxy-wrapped arrays or entries, throwing property getters, non-string paths, non-Uint8Array bytes, and inherited (non-own) fields all either produce a typed { ok: false, reason: 'invalid_entries' } result or, when genuinely well-formed via the prototype chain, a normal successful result - verified by direct calls that assert no exception escapes.",
-    "F11": "This report and its accompanying evidence document name the exact test files/cases closing each finding above and the exact on-disk reconciliation performed, rather than mapping findings to tests that only covered a narrower case."
+    "F1": "A selected Output B could survive a deleted/omitted selected Output A in a pair-bearing scope (exact audit reproduction: remove selected A, add a valid A omission + matching issue, keep selected B, mark plan partial). validateSelectedB now requires a genuine matching selected Output A for the same (sessionId, sceneId) whenever scope.policy.outputA is true, reusing validateSelectedA's already-trusted result. Idea ported from Programmer 2's validateSelectedOutputB check, re-implemented inside Programmer 1's ValidatedPackagePlanIndex architecture.",
+    "F2": "The validator only checked bare uniqueness (or nothing) for sessions/executionPlans/covers/groupPlans, never reconciled project identity against scope.projectId, and content construction still read raw plan.selection.project/versions/artworks/outputsA/outputsB/groupPlans/validationResults directly (exact audit reproduction: selection.project.id forged while scope.projectId unchanged). Adds validateProject, validateSessions, validateScenes, validateExecutionPlans, validateCovers, validateArtworks, validateVersions, validateValidationResults, and validateProvenance, each anchored against scope/numbering/groups. ValidatedPackagePlanIndex now exposes project/versionsById/artworksById/validationResultsBySession. buildPackageContentEntries, buildPromptMetadataJson, and buildValidationJson consume these validated, session-scoped slices instead of raw plan.selection.* arrays.",
+    "F3": "A selected group plan's groupNumber could contradict its own selected group's authoritative groupNumber while groupNumbering agreed with the forged value (exact audit reproduction: selection.groups[0].groupNumber 1->9 with matching groupNumbering rows, but selection.groupPlans[0].groupNumber stays 1). validateGroupPlans now requires each group plan's groupNumber to equal the real selected group's own field from the already-validated group index, with omission-aware completeness when policy.groupPlans requires one."
   },
-  "architecture_note": "validatePackagePlanIntegrity runs six stages in a fixed precedence - scope policy, precise scope-array checks (building the canonical session/scene identity map), numbering (identity/scene-membership/canonical-order/field), group-numbering exactness, selected Output A, selected Output B - each building part of the returned ValidatedPackagePlanIndex, consumed unchanged by buildPackageContentEntries. hasScopePolicyViolation and hasDuplicateScopeIdentifiers remain their own exported, independently unit-tested boolean functions (unchanged core logic, still directly imported by corrective-adversarial.test.ts); the internal validateScopeArrays/validateNumbering/validateGroupNumbering/validateSelectedOutputA/validateSelectedOutputB functions are the new precise-field, index-building counterparts the orchestrator actually calls.",
-  "archived_release_metadata": [
-    {
-      "file": "ARCHIVE-PHASE9-MANIFEST.json",
-      "was": "MANIFEST.json",
-      "note": "Phase 9 release manifest, superseded — does not describe the current tree."
-    },
-    {
-      "file": "ARCHIVE-PHASE7-RELEASE-MANIFEST.json",
-      "was": "RELEASE-MANIFEST.json",
-      "note": "Phase 7 Third Corrective release manifest, superseded — does not describe the current tree."
-    },
-    {
-      "file": "ARCHIVE-SHA256SUMS-PRE-PHASE10.txt",
-      "was": "SHA256SUMS.txt",
-      "note": "Pre-Phase-10 per-file checksum listing (322 entries, Phase 9 vintage), superseded by CHECKSUMS.txt."
-    }
+  "ported_from_programmer_2": [
+    "Selected-B-requires-matching-selected-A check (idea only; re-implemented in package-plan-validation.ts, not copied as a file).",
+    "Real validateExportManifestShape import into the external ZIP verifier, replacing a local Ajv schema compile.",
+    "Real compareUtf8 import into the external ZIP verifier, replacing a local Buffer.compare reimplementation.",
+    "On-disk extracted-file reconciliation split into an independent, testable module (scripts/zip-external-verification.mts)."
   ],
-  "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over the full working tree, excluding node_modules/dist/.git and CHECKSUMS.txt itself, including this manifest's own final line)",
+  "explicitly_not_ported_from_programmer_2": [
+    "The five-map ValidatedPackagePlanIndex (Programmer 1's wider, fully-reconciled index is kept and extended).",
+    "Mutable Maps typed as ReadonlyMap (Programmer 1's genuine runtime-immutable ReadonlyMapView is kept).",
+    "Raw .find()/.filter() content construction.",
+    "The less-strict ZIP writer (Programmer 1's strict property-descriptor-snapshot writer is kept unchanged).",
+    "The 11-row, partly-manual external verification command (the 13-row automatic structure is kept)."
+  ],
+  "architecture_note": "src/export/packaging/package-plan-validation.ts is the single typed validation boundary. package.ts calls validatePackagePlanIntegrity(plan, limits) once; buildPackageContentEntries, buildPromptMetadataJson, and buildValidationJson consume only the validated ValidatedPackagePlanIndex. Architecture tests (test/export-engine/packaging/architecture.test.ts) statically assert content.ts never imports the whole ExportPlan type, and that package.ts/package-plan.ts/manifest.ts never read a raw plan.selection.* category after the validation gate.",
   "source_tree_combined_hash": {
-    "command": "npm run hash:source-tree",
-    "value": "99b4b4ab76fa218632e5af304d2cd6fa03611664de7426ac3898f83051078cb1  406 files",
-    "note": "scripts/source-tree-hash.mjs explicitly excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt by exact relative path (documented in the script itself), because a combined hash that embeds itself in one of the files it hashes can never reproduce - the act of writing the value changes the bytes that produced it. This value is reproducible on any clean extraction: editing CHECKPOINT-MANIFEST.json or CHECKSUMS.txt afterward does not change it, since both are now outside the hashed set. Verify with: sha256sum -c CHECKSUMS.txt && node scripts/source-tree-hash.mjs. Verified reproducible: run twice consecutively in this tree, identical both times."
+    "command": "node scripts/source-tree-hash.mjs",
+    "value": "06acf090216ad5f394edb87c937392821c2af0bfd93d14197e692875769cc736  408 files",
+    "note": "Computed from a clean `git archive` extraction of commit e466d29 (not the live working directory). The script excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt to avoid self-reference."
   },
-  "docs_spec_modified": false,
+  "test_evidence": {
+    "test_files": 128,
+    "tests_passed": 2493,
+    "tests_skipped": 0,
+    "tests_todo_or_only": 0,
+    "packaging_test_files": 12,
+    "packaging_tests_passed": 408,
+    "final_controlled_merge_acceptance_oracle_tests": 43,
+    "external_fixture_rows": 10,
+    "external_tamper_rows": 2,
+    "external_structural_rows": 1,
+    "external_verification_total_rows": 13
+  },
+  "gate_results": {
+    "npm_ci": "pass",
+    "npm_audit": "pass (0 vulnerabilities)",
+    "npm_audit_omit_dev": "pass (0 vulnerabilities)",
+    "npm_run_typecheck": "pass",
+    "npm_run_lint": "pass (0 warnings)",
+    "npm_run_format_check": "pass",
+    "npm_run_test": "pass (128 files / 2493 tests / 0 skipped)",
+    "npm_run_verify_determinism": "pass",
+    "npm_run_build": "pass",
+    "npm_run_verify": "pass",
+    "npm_run_verify_full": "pass",
+    "npm_run_verify_zip_external": "pass (13/13 rows)"
+  },
+  "docs_spec": {
+    "file_count": 12,
+    "byte_identity_against_programmer_1_starting_checkpoint": "12/12",
+    "modified": false
+  },
   "used_force": false,
   "tests_deleted": false,
-  "tests_skipped": 0,
+  "tests_weakened": false,
+  "coverage_weakened": false,
   "batch_10_5_started": false,
-  "changed_files_this_deficiency_closure": {
-    "modified_source": [
-      "src/export/packaging/package-plan.ts",
-      "src/export/packaging/package.ts",
-      "src/export/packaging/zip-writer.ts"
-    ],
-    "modified_tests": [
-      "test/export-engine/packaging/corrective-adversarial.test.ts",
-      "test/export-engine/packaging/golden-zip-dump.test.ts"
-    ],
-    "extended_tests": ["test/export-engine/packaging/consolidated-final-corrective.test.ts"],
-    "renamed_scripts": [
-      "scripts/verify-golden-zips-external.mjs -> scripts/verify-golden-zips-external.mts"
-    ],
+  "changed_files_this_merge": {
+    "added_source": ["src/export/packaging/package-plan-validation.ts"],
+    "modified_source": ["src/export/packaging/content.ts", "src/export/packaging/package-plan.ts"],
     "added_scripts": ["scripts/zip-external-verification.mts"],
-    "modified_metadata": [
-      "package.json (verify:zip:external now runs vite-node against the .mts script; adds the vite-node devDependency)",
-      "package-lock.json (records the vite-node devDependency, already transitively resolved at the same version)",
-      "tsconfig.json (adds scripts/ to include, so the new .mts scripts are covered by npm run typecheck)"
-    ]
+    "modified_scripts": ["scripts/verify-golden-zips-external.mts (renamed from .mjs)"],
+    "added_tests": ["test/export-engine/packaging/final-controlled-merge-acceptance.test.ts"],
+    "modified_tests": [
+      "test/export-engine/packaging/architecture.test.ts",
+      "test/export-engine/packaging/consolidated-final-corrective.test.ts",
+      "test/export-engine/packaging/corrective-adversarial.test.ts",
+      "test/export-engine/packaging/scope-matrix.test.ts"
+    ],
+    "modified_config": ["package.json", "package-lock.json", "tsconfig.json"],
+    "modified_metadata": ["CHECKPOINT-MANIFEST.json", "CHECKSUMS.txt"]
   }
 }

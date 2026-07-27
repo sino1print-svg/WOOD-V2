@@ -70,32 +70,123 @@ export interface ZipWriteResult {
 export interface ZipWriteFailure {
   readonly ok: false;
   readonly reason:
+    | 'invalid_entries'
+    | 'invalid_entry'
+    | 'invalid_limits'
     | 'too_many_entries'
     | 'entry_too_large'
     | 'archive_too_large'
     | 'unsafe_path'
     | 'duplicate_path'
-    | 'unordered_entries'
-    | 'invalid_entries';
+    | 'unordered_entries';
+}
+
+const PACKAGE_ENTRY_KEYS = [
+  'path',
+  'kind',
+  'format',
+  'mediaType',
+  'bytes',
+  'byteLength',
+  'checksum',
+] as const;
+const SHA256 = /^[0-9a-f]{64}$/u;
+
+function ownDataValue(
+  descriptors: PropertyDescriptorMap,
+  key: (typeof PACKAGE_ENTRY_KEYS)[number],
+): unknown {
+  const descriptor = descriptors[key];
+  return descriptor && 'value' in descriptor ? descriptor.value : undefined;
 }
 
 /**
- * Deficiency Closure §10: `writeDeterministicZip` is exported through the
- * packaging public surface and "no public packaging function may throw on
- * hostile input" - null/non-array `entries`, a sparse array, an
- * accessor-backed or `Proxy`-wrapped entry whose `path`/`bytes` getter
- * throws, a non-string `path`, or non-`Uint8Array` `bytes` must all produce
- * a typed failure, never a raw JS exception. Checked with plain indexed
- * access (never `for...of`, which would invoke a hostile `Symbol.iterator`)
- * before any byte is written, with the whole function additionally wrapped
- * in `try`/`catch` as the final backstop for a throw from anywhere else
- * (e.g. a getter that only throws on a later access).
+ * Inspect hostile runtime input without invoking entry accessors, then take a
+ * trusted snapshot.  The writer never touches the untrusted objects again.
  */
-function isValidZipEntryShape(candidate: unknown): candidate is PackageEntry {
-  if (typeof candidate !== 'object' || candidate === null) return false;
-  const path: unknown = (candidate as { path?: unknown }).path;
-  const bytes: unknown = (candidate as { bytes?: unknown }).bytes;
-  return typeof path === 'string' && bytes instanceof Uint8Array;
+function snapshotEntries(
+  value: unknown,
+): { readonly ok: true; readonly entries: readonly PackageEntry[] } | ZipWriteFailure {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+    return { ok: false, reason: 'invalid_entries' };
+  }
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+  if (
+    !lengthDescriptor ||
+    !('value' in lengthDescriptor) ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  ) {
+    return { ok: false, reason: 'invalid_entries' };
+  }
+
+  const entries: PackageEntry[] = [];
+  for (let index = 0; index < lengthDescriptor.value; index += 1) {
+    const arrayDescriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!arrayDescriptor || !('value' in arrayDescriptor)) {
+      return { ok: false, reason: 'invalid_entries' };
+    }
+    const entry = arrayDescriptor.value;
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      Object.getPrototypeOf(entry) !== Object.prototype
+    ) {
+      return { ok: false, reason: 'invalid_entry' };
+    }
+    const keys = Reflect.ownKeys(entry);
+    if (
+      keys.length !== PACKAGE_ENTRY_KEYS.length ||
+      keys.some(
+        (key) =>
+          typeof key !== 'string' ||
+          !PACKAGE_ENTRY_KEYS.includes(key as (typeof PACKAGE_ENTRY_KEYS)[number]),
+      )
+    ) {
+      return { ok: false, reason: 'invalid_entry' };
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(entry);
+    if (
+      PACKAGE_ENTRY_KEYS.some((key) => {
+        const descriptor = descriptors[key];
+        return !descriptor || !('value' in descriptor);
+      })
+    ) {
+      return { ok: false, reason: 'invalid_entry' };
+    }
+
+    const path = ownDataValue(descriptors, 'path');
+    const kind = ownDataValue(descriptors, 'kind');
+    const format = ownDataValue(descriptors, 'format');
+    const mediaType = ownDataValue(descriptors, 'mediaType');
+    const bytes = ownDataValue(descriptors, 'bytes');
+    const byteLength = ownDataValue(descriptors, 'byteLength');
+    const checksum = ownDataValue(descriptors, 'checksum');
+    if (
+      typeof path !== 'string' ||
+      typeof kind !== 'string' ||
+      typeof format !== 'string' ||
+      typeof mediaType !== 'string' ||
+      !(bytes instanceof Uint8Array) ||
+      Object.getPrototypeOf(bytes) !== Uint8Array.prototype ||
+      !Number.isSafeInteger(byteLength) ||
+      byteLength !== bytes.byteLength ||
+      typeof checksum !== 'string' ||
+      !SHA256.test(checksum)
+    ) {
+      return { ok: false, reason: 'invalid_entry' };
+    }
+    entries.push({
+      path,
+      kind: kind as PackageEntry['kind'],
+      format: format as PackageEntry['format'],
+      mediaType: mediaType as PackageEntry['mediaType'],
+      bytes: bytes.slice(),
+      byteLength,
+      checksum: checksum as PackageEntry['checksum'],
+    });
+  }
+  return { ok: true, entries };
 }
 
 /**
@@ -126,21 +217,40 @@ function findOrderingFailure(
   return null;
 }
 
-function writeDeterministicZipUnsafe(
+/**
+ * Build a deterministic ZIP archive from already sorted, already path-safe
+ * entries. The caller is responsible for path safety and byte-lexicographic
+ * ordering; this function re-verifies both and fails closed rather than
+ * silently reordering or truncating.
+ */
+export function writeDeterministicZip(
   entries: readonly PackageEntry[],
   maxZipEntries: number,
   maxArchiveBytes: number,
 ): ZipWriteResult | ZipWriteFailure {
-  if (!Array.isArray(entries)) return { ok: false, reason: 'invalid_entries' };
-  const entryCount = entries.length;
-  if (typeof entryCount !== 'number' || !Number.isInteger(entryCount) || entryCount < 0) {
+  try {
+    if (
+      !Number.isSafeInteger(maxZipEntries) ||
+      maxZipEntries <= 0 ||
+      !Number.isSafeInteger(maxArchiveBytes) ||
+      maxArchiveBytes <= 0
+    ) {
+      return { ok: false, reason: 'invalid_limits' };
+    }
+    const snapshot = snapshotEntries(entries);
+    if (!snapshot.ok) return snapshot;
+    return writeValidatedEntries(snapshot.entries, maxZipEntries, maxArchiveBytes);
+  } catch {
     return { ok: false, reason: 'invalid_entries' };
   }
-  for (let index = 0; index < entryCount; index += 1) {
-    if (!isValidZipEntryShape(entries[index])) return { ok: false, reason: 'invalid_entries' };
-  }
+}
 
-  if (entryCount > maxZipEntries || entryCount > MAX_UINT16) {
+function writeValidatedEntries(
+  entries: readonly PackageEntry[],
+  maxZipEntries: number,
+  maxArchiveBytes: number,
+): ZipWriteResult | ZipWriteFailure {
+  if (entries.length > maxZipEntries || entries.length > MAX_UINT16) {
     return { ok: false, reason: 'too_many_entries' };
   }
   if (findUnsafePath(entries) !== null) return { ok: false, reason: 'unsafe_path' };
@@ -155,8 +265,7 @@ function writeDeterministicZipUnsafe(
     readonly size: number;
   }[] = [];
 
-  for (let index = 0; index < entryCount; index += 1) {
-    const entry = entries[index]!;
+  for (const entry of entries) {
     const nameBytes = encodeUtf8(entry.path);
     if (nameBytes.byteLength > MAX_UINT16 || entry.bytes.byteLength > MAX_UINT32) {
       return { ok: false, reason: 'entry_too_large' };
@@ -182,8 +291,7 @@ function writeDeterministicZipUnsafe(
   }
 
   const centralDirectoryStart = writer.length;
-  for (let index = 0; index < centralDirectoryEntries.length; index += 1) {
-    const record = centralDirectoryEntries[index]!;
+  for (const record of centralDirectoryEntries) {
     writer
       .uint32(CENTRAL_DIRECTORY_SIGNATURE)
       .uint16(VERSION_MADE_BY)
@@ -222,29 +330,4 @@ function writeDeterministicZipUnsafe(
 
   if (writer.length > maxArchiveBytes) return { ok: false, reason: 'archive_too_large' };
   return { ok: true, bytes: writer.finish() };
-}
-
-/**
- * Build a deterministic ZIP archive from already sorted, already path-safe
- * entries. The caller is responsible for path safety and byte-lexicographic
- * ordering; this function re-verifies both and fails closed rather than
- * silently reordering or truncating.
- *
- * Deficiency Closure §10: the outer `try`/`catch` is the final backstop for
- * hostile runtime input that the up-front shape checks in
- * `writeDeterministicZipUnsafe` cannot see coming - an accessor or `Proxy`
- * trap that only throws on a later property access, for example - so this
- * public function returns a typed failure rather than letting any exception
- * escape, no matter where in the write path it originates.
- */
-export function writeDeterministicZip(
-  entries: readonly PackageEntry[],
-  maxZipEntries: number,
-  maxArchiveBytes: number,
-): ZipWriteResult | ZipWriteFailure {
-  try {
-    return writeDeterministicZipUnsafe(entries, maxZipEntries, maxArchiveBytes);
-  } catch {
-    return { ok: false, reason: 'invalid_entries' };
-  }
 }

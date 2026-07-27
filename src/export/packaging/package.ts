@@ -161,28 +161,23 @@ function packageExportInternal(
       );
     }
 
-    // Deficiency Closure §3/§4/§5: one typed validation entry point, called
-    // once, in a fixed deterministic precedence - scope policy, then precise
-    // scope identifier arrays, then numbering (identity, scene membership,
-    // canonical order, and field exactness), then group numbering exactness,
-    // then selected Output A field/order reconciliation, then selected
-    // Output B field/order reconciliation - so the failure a hostile plan
-    // produces never depends on which check happened to run first, and an
-    // Output A problem is never reported under the Output B field. On
-    // success, `integrity.value` is the typed `ValidatedPackagePlanIndex`
-    // handed to `buildPackageContentEntries` below, so content construction
-    // never re-derives identity/cardinality from the raw plan. See
-    // `validatePackagePlanIntegrity` for the full rationale of each stage.
-    const integrity = validatePackagePlanIntegrity(plan);
+    // Consolidated Final Corrective §5/§5.1: one typed validation entry
+    // point, called once, in a fixed deterministic precedence - scope
+    // policy, then scope identifier arrays, then numbering (canonical order
+    // and field exactness), then group numbering, then selected Output A/B
+    // linkage - so the failure a hostile plan produces never depends on
+    // which check happened to run first. See `validatePackagePlanIntegrity`
+    // for the full rationale of each stage.
+    const integrity = validatePackagePlanIntegrity(plan, input.limits);
     if (!integrity.ok) {
       return failureResult(integrity.failures, warnings, plan.omissions);
     }
 
     const planned = buildPackageContentEntries(
       plan,
+      integrity.value,
       { planResult: input.planResult, limits: input.limits },
       input.limits,
-      integrity.value,
     );
     if (!planned.ok) return failureResult(planned.failures, warnings, plan.omissions);
 

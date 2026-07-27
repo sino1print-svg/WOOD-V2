@@ -95,6 +95,7 @@ describe('Batch 10.4 packaging architecture (EX section 7)', () => {
       'manifest.ts',
       'naming.ts',
       'package-entry.ts',
+      'package-plan-validation.ts',
       'package-plan.ts',
       'package-result.ts',
       'package.ts',
@@ -103,6 +104,33 @@ describe('Batch 10.4 packaging architecture (EX section 7)', () => {
       'zip-verifier.ts',
       'zip-writer.ts',
     ]);
+  });
+
+  it('content.ts never imports the whole ExportPlan type (Independent Audit F2 - content builders must only receive pre-validated, session-scoped slices, never the raw plan)', () => {
+    const contentSource = readFileSync(path.join(PACKAGING_ROOT, 'content.ts'), 'utf8');
+    expect(contentSource).not.toMatch(/\bExportPlan\b/u);
+  });
+
+  it('buildPackageContentEntries never reads a raw plan.selection category directly (Independent Audit F2 - every selected-artifact category must come from the validated trusted index, not plan.selection.*)', () => {
+    const planSource = readFileSync(path.join(PACKAGING_ROOT, 'package-plan.ts'), 'utf8');
+    const start = planSource.indexOf('export function buildPackageContentEntries');
+    expect(start).toBeGreaterThan(-1);
+    // `hasScopePolicyViolation`/`hasDuplicateScopeIdentifiers` (above this
+    // point in the file) legitimately read `plan.selection.*` for bare
+    // presence/duplicate scope checks - this scan is intentionally scoped to
+    // content construction itself, the function the audit's F2 finding named.
+    const body = planSource.slice(start);
+    expect(body).not.toMatch(/plan\.selection\./u);
+  });
+
+  it('package.ts and manifest.ts never read a raw plan.selection category directly (Final Controlled Merge §11 - named files must consume the validated trusted index, never raw selection arrays)', () => {
+    for (const fileName of ['package.ts', 'manifest.ts']) {
+      const source = readFileSync(path.join(PACKAGING_ROOT, fileName), 'utf8');
+      expect(source, fileName).not.toMatch(/plan\.selection\./u);
+      expect(source, fileName).not.toMatch(
+        /\.selection\.(?:project|sessions|scenes|groups|groupPlans|outputsA|outputsB|covers|artworks|versions|executionPlans|validationResults)\b/u,
+      );
+    }
   });
 
   it('does not modify the frozen Batch 10.1-10.3 formatter/export-engine file lists', () => {

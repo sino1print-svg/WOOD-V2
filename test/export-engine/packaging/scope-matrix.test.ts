@@ -490,6 +490,11 @@ describe('Second Corrective C7 - additional exact path/kind matrices (partial pa
         sessionId: secondSessionId,
         sourceSaleImageIds: [secondOutputAId],
       },
+      // A real second session never shares a validation-result identity with
+      // another session; session1's own results are cleared here rather than
+      // copied verbatim, since this fixture's point is scene/output/artwork
+      // identity, not validation-result content.
+      validationResults: {},
     };
     project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
     project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];

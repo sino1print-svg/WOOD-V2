@@ -441,16 +441,7 @@ describe('Third Corrective F2 - pair eligibility keyed by complete session+scene
     return { hostilePlan, secondSessionId };
   }
 
-  it('a shape-valid hostile plan reusing a sceneId across two sessions is rejected outright rather than silently omitting session 2', () => {
-    // Deficiency Closure §6/F4: "do not treat absence as implicit omission" -
-    // session 2's selected Output A/B were stripped without any accompanying
-    // `plan.omissions`/`plan.issues` evidence, so the canonical Output A/B
-    // order check (numbering, filtered by *approved* omissions only) now
-    // disagrees with `plan.selection.outputsA`/`outputsB` and the whole plan
-    // is rejected before any content is built - strictly stronger than the
-    // old "succeeds but session 2 carries no leaked content" result, and it
-    // still proves session 1's real pair is never borrowed for session 2,
-    // since nothing is emitted at all.
+  it('a shape-valid hostile plan reusing a sceneId across two sessions cannot silently omit session 2 artifacts', () => {
     const { hostilePlan } = crossSessionHostilePlan();
     const result = packageExport(
       packageInputFromFormatter({
@@ -460,7 +451,8 @@ describe('Third Corrective F2 - pair eligibility keyed by complete session+scene
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect(result.failures[0]?.code).toBe('EXPORT_LINK_001');
+    expect(result.failures[0]?.field).toBe('packaging.selection.outputsA');
     expect('zipBytes' in result).toBe(false);
   });
 
@@ -566,6 +558,11 @@ describe('Fourth Corrective C1/C2 - exact relational cardinality and B-only link
         sessionId: secondSessionId,
         sourceSaleImageIds: [secondOutputAId],
       },
+      // A real second session never shares a validation-result identity with
+      // another session; session1's own results are cleared here rather than
+      // copied verbatim, since this fixture's point is scene/output identity
+      // reuse, not validation-result content.
+      validationResults: {},
     };
     project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
     project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
@@ -802,14 +799,15 @@ describe('Fourth Corrective C1/C2 - exact relational cardinality and B-only link
       }
     });
 
-    it('selected Output A/B array order reversed: rejected (canonical selected-output order is now semantically significant)', () => {
-      // Deficiency Closure §7/§8: `selection.outputsA`/`outputsB` must each
-      // equal the ordered subsequence of `scope.outputAIds`/`outputBIds`
-      // that survives approved-omission filtering - reversing either array
-      // changes it relative to that canonical order (§8.2's `numbering`
-      // sequence is unaffected either way), so what was previously accepted
-      // as an insertion-order-independence case is now itself one of the
-      // mandatory "selected A/B array reversed" rejection cases.
+    it('selected Output A/B array order reversed: rejected as non-canonical', () => {
+      // Consolidated Final Corrective §8.2: `plan.numbering`'s own order is
+      // now a canonical, semantically-significant sequence that must equal
+      // `plan.scope.outputAIds` exactly (never sorted, never reordered) -
+      // so, unlike the selected-output arrays below, `numbering` itself is
+      // intentionally left untouched here rather than reversed too; a test
+      // that reverses `numbering` is a distinct hostile-input case (see
+      // "Consolidated Final Corrective §8" tests), not an
+      // insertion-order-independence case.
       const { plan } = twoSessionPairPlan();
       const forward = packageExport(packageInputFor({ ok: true, value: plan }));
       const reversedPlan = {
@@ -824,7 +822,7 @@ describe('Fourth Corrective C1/C2 - exact relational cardinality and B-only link
       expect(forward.ok).toBe(true);
       expect(reversed.ok).toBe(false);
       if (reversed.ok) return;
-      expect(reversed.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+      expect(reversed.failures[0]?.field).toBe('packaging.selection.outputsA');
       expect('zipBytes' in reversed).toBe(false);
     });
 
@@ -2685,6 +2683,11 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
         sessionId: secondSessionId,
         sourceSaleImageIds: [secondOutputAId],
       },
+      // A real second session never shares a validation-result identity with
+      // another session; session1's own results are cleared here rather than
+      // copied verbatim, since this fixture's point is scene/output identity
+      // reuse, not validation-result content.
+      validationResults: {},
     };
     project.sessions = { [CANONICAL_SESSION_ID]: original, [secondSessionId]: secondSession };
     project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
@@ -2714,15 +2717,7 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
     }
   });
 
-  it('item 2: session 2 has no selected Output A/B and no omission evidence (same reused sceneId): rejected outright', () => {
-    // Deficiency Closure §6/F4: session 2's real Output A/B were stripped
-    // with no matching `plan.omissions`/`plan.issues` entry - "do not treat
-    // absence as implicit omission" - so the omission-aware canonical order
-    // check for both Output A and Output B disagrees with what remains
-    // selected, and the whole plan is rejected before any content is built.
-    // This is strictly stronger than the old "succeeds but session 2 carries
-    // no leaked content" result, and still proves session 1's real pair is
-    // never borrowed for session 2, since nothing is emitted at all.
+  it('item 2: session 2 has no selected Output A/B and no omission evidence - rejected', () => {
     const { plan, secondSessionId } = sameSceneIdTwoSessionPlan();
     const stripped = {
       ...plan,
@@ -2735,7 +2730,7 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
     const result = packageExport(packageInputFor({ ok: true, value: stripped }));
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect(result.failures[0]?.field).toBe('packaging.selection.outputsA');
     expect('zipBytes' in result).toBe(false);
   });
 
@@ -2786,12 +2781,12 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
     expect('zipBytes' in result).toBe(false);
   });
 
-  it('item 5: reversing selected Output A/B array order is rejected (same reused sceneId)', () => {
-    // Deficiency Closure §7/§8: reversing `selection.outputsA`/`outputsB`
-    // now disagrees with the canonical ordered subsequence of
-    // `scope.outputAIds`/`outputBIds`, so this reused-sceneId variant of the
-    // "selected A/B array reversed" mandatory rejection case must fail
-    // exactly like the single-sceneId case above.
+  it('item 5: reversing selected Output A/B array order is rejected as non-canonical', () => {
+    // Consolidated Final Corrective §8.2: `plan.numbering` is left
+    // untouched here - its order is now a canonical sequence that must
+    // equal `plan.scope.outputAIds` exactly, not an arbitrary insertion
+    // order - so only the selected-output arrays (grouped by identity, not
+    // sequence-compared) are reversed to prove genuine order-independence.
     const { plan } = sameSceneIdTwoSessionPlan();
     const forward = packageExport(packageInputFor({ ok: true, value: plan }));
     const reversedPlan = {
@@ -2806,7 +2801,7 @@ describe('Fifth Corrective C5 - real same-sceneId cross-session matrix (identity
     expect(forward.ok).toBe(true);
     expect(reversed.ok).toBe(false);
     if (reversed.ok) return;
-    expect(reversed.failures.some((failure) => failure.code === 'EXPORT_LINK_001')).toBe(true);
+    expect(reversed.failures[0]?.field).toBe('packaging.selection.outputsA');
     expect('zipBytes' in reversed).toBe(false);
   });
 });

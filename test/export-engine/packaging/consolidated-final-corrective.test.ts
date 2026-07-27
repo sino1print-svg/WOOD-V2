@@ -1,25 +1,22 @@
 /**
  * Consolidated Final Corrective §20 - mandatory consolidated test oracle.
  *
- * Focuses on coverage genuinely new to this corrective: the numbering
- * matrix (§20.5/§8), the group-numbering matrix (§20.7/§11), the mandatory
- * same-sceneId-different-ordinal fixture (§12.1), and the remaining
- * policy-injection combinations (§20.3) not already exercised in
- * `corrective-adversarial.test.ts` or `scope-matrix.test.ts`. Per §22, prior
- * adversarial tests are not deleted or duplicated here - this file adds to,
- * not replaces, that existing coverage.
+ * This is the complete table-driven acceptance oracle.  It intentionally
+ * repeats frozen categories that also have focused regression tests: a
+ * consolidated acceptance decision must not depend on coverage elsewhere.
  */
 import { describe, expect, it } from 'vitest';
 import { createExportPlan } from '../../../src/engines/export-engine';
-import { packageExport } from '../../../src/export/packaging';
+import { packageExport, writeDeterministicZip } from '../../../src/export/packaging';
 import type { ExportPackageInput, ExportPackageResult } from '../../../src/export/packaging';
-import { writeDeterministicZip } from '../../../src/export/packaging/zip-writer';
 import { registeredExportFailure } from '../../../src/export/failures';
-import type { ExportPlan, ExportPlanOmission } from '../../../src/shared/contracts/export-planning';
+import { makeEntry, type PackageEntry } from '../../../src/export/packaging/package-entry';
+import { validatePackagePlanIntegrity } from '../../../src/export/packaging/package-plan';
+import type { ExportPlanOmission } from '../../../src/shared/contracts/export-planning';
+import type { ExportArtifactKind } from '../../../src/shared/contracts/export-contracts';
 import {
   ExportScope,
   GroupBy,
-  ValidationSeverity,
   type GroupId,
   type OutputAId,
   type OutputBId,
@@ -44,23 +41,6 @@ function packageInputFor(planResult: ExportPackageInput['planResult']): ExportPa
   return { planResult, versions, limits, createdAt, exportId };
 }
 
-/** §20.10 strict failure-assertion template - exact code, and absence of every byte/entry field. */
-function expectStrictFailure(result: ReturnType<typeof packageExport>, code: string): void {
-  expect(result.ok).toBe(false);
-  if (result.ok) return;
-  expect(result.failures.some((failure) => failure.code === code)).toBe(true);
-  expect('zipBytes' in result).toBe(false);
-  expect('zipSha256' in result).toBe(false);
-  expect('manifestBytes' in result).toBe(false);
-  expect('checksumsBytes' in result).toBe(false);
-  expect('entries' in result).toBe(false);
-}
-
-/**
- * Deficiency Closure §12 - exact required helper shape: asserts exact array
- * equality on `failures`/`warnings`/`omissions` (never `.some(code)`), plus
- * the absence of every success-only field.
- */
 function expectBlockingFailure(
   result: ExportPackageResult,
   expected: {
@@ -71,9 +51,11 @@ function expectBlockingFailure(
 ): void {
   expect(result.ok).toBe(false);
   if (result.ok) throw new Error('expected failure');
+
   expect(result.failures).toEqual(expected.failures);
   expect(result.warnings).toEqual(expected.warnings);
   expect(result.omissions).toEqual(expected.omissions);
+
   expect('zipBytes' in result).toBe(false);
   expect('zipSha256' in result).toBe(false);
   expect('manifestBytes' in result).toBe(false);
@@ -81,23 +63,20 @@ function expectBlockingFailure(
   expect('entries' in result).toBe(false);
 }
 
-/** Derives the exact `expectBlockingFailure` expectation from the mutated plan actually fed to `packageExport`, rather than guessing at warnings/omissions. */
-function blockingFailureFor(
-  plan: ExportPlan,
+function expectStrictFailure(
+  result: ExportPackageResult,
   code: string,
-  field: string,
-): {
-  readonly failures: readonly ValidationFailure[];
-  readonly warnings: readonly ValidationFailure[];
-  readonly omissions: readonly ExportPlanOmission[];
-} {
-  const failure = registeredExportFailure(code, field);
-  expect(failure).not.toBeNull();
-  return {
-    failures: [failure!],
-    warnings: plan.issues.filter((issue) => issue.severity === ValidationSeverity.Warning),
-    omissions: plan.omissions,
-  };
+  field = code === 'EXPORT_GROUP_001'
+    ? 'packaging.groupNumbering'
+    : code === 'EXPORT_SCOPE_001'
+      ? 'packaging.scope.policy'
+      : 'packaging.numbering',
+): void {
+  expectBlockingFailure(result, {
+    failures: [registeredExportFailure(code, field)!],
+    warnings: [],
+    omissions: [],
+  });
 }
 
 function pairPlan() {
@@ -150,80 +129,167 @@ function twoSceneGroupPlan() {
   };
 }
 
-/** A real `output_b` scope plan (single session, single scene, no Output A selected). */
-function outputBOnlyPlan() {
-  const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: CANONICAL_SCOPES[1]! });
-  expect(planResult.ok).toBe(true);
-  if (!planResult.ok) throw new Error('unreachable');
-  return structuredClone(planResult.value);
-}
+describe('Deficiency Closure §12 - all supported and rejected scopes in one exact oracle', () => {
+  type EntryTuple = readonly [ExportArtifactKind, string];
+  const base = (rows: readonly EntryTuple[], root = 'project-001') =>
+    rows.map(([kind, relativePath]) => ({ kind, path: `${root}/${relativePath}` }));
+  const commonA: readonly EntryTuple[] = [
+    ['readme', 'README.md'],
+    ['checksums', 'checksums.sha256'],
+    ['manifest', 'manifest.json'],
+    ['prompt_metadata', 'session-01/metadata/prompt-metadata.json'],
+    ['validation', 'session-01/metadata/validation.json'],
+    ['prompt_a', 'session-01/prompts/A/001_tee-front_A.txt'],
+  ];
+  const commonB: readonly EntryTuple[] = [
+    ['readme', 'README.md'],
+    ['artwork_metadata', 'assets/artwork-metadata/artwork-canonical.json'],
+    ['checksums', 'checksums.sha256'],
+    ['manifest', 'manifest.json'],
+    ['prompt_metadata', 'session-01/metadata/prompt-metadata.json'],
+    ['validation', 'session-01/metadata/validation.json'],
+    ['prompt_b', 'session-01/prompts/B/001_output-b-canonical_B.txt'],
+  ];
+  const complete: readonly EntryTuple[] = [
+    ['readme', 'README.md'],
+    ['artwork_metadata', 'assets/artwork-metadata/artwork-canonical.json'],
+    ['checksums', 'checksums.sha256'],
+    ['manifest', 'manifest.json'],
+    ['project', 'project/project.json'],
+    ['cover_metadata', 'session-01/cover/cover-metadata.json'],
+    ['cover_prompt', 'session-01/cover/cover-prompt.txt'],
+    ['execution_plan', 'session-01/execution-plan.txt'],
+    ['group_plan', 'session-01/groups/group-01.txt'],
+    ['prompt_metadata', 'session-01/metadata/prompt-metadata.json'],
+    ['validation', 'session-01/metadata/validation.json'],
+    ['prompt_a', 'session-01/prompts/A/001_tee-front_A.txt'],
+    ['prompt_b', 'session-01/prompts/B/001_tee-front_B.txt'],
+    ['prompt_pair', 'session-01/prompts/pairs/001_pair_execution.md'],
+    ['session_summary', 'session-01/session-summary.md'],
+  ];
+  const cases: readonly {
+    readonly name: string;
+    readonly scopeIndex: number;
+    readonly entries: readonly { readonly kind: ExportArtifactKind; readonly path: string }[];
+  }[] = [
+    { name: 'output_a', scopeIndex: 0, entries: base(commonA) },
+    { name: 'output_b', scopeIndex: 1, entries: base(commonB) },
+    {
+      name: 'pair',
+      scopeIndex: 2,
+      entries: base([
+        ['readme', 'README.md'],
+        ['artwork_metadata', 'assets/artwork-metadata/artwork-canonical.json'],
+        ['checksums', 'checksums.sha256'],
+        ['manifest', 'manifest.json'],
+        ['prompt_metadata', 'session-01/metadata/prompt-metadata.json'],
+        ['validation', 'session-01/metadata/validation.json'],
+        ['prompt_a', 'session-01/prompts/A/001_tee-front_A.txt'],
+        ['prompt_b', 'session-01/prompts/B/001_tee-front_B.txt'],
+        ['prompt_pair', 'session-01/prompts/pairs/001_pair_execution.md'],
+      ]),
+    },
+    {
+      name: 'group',
+      scopeIndex: 3,
+      entries: base([
+        ['readme', 'README.md'],
+        ['artwork_metadata', 'assets/artwork-metadata/artwork-canonical.json'],
+        ['checksums', 'checksums.sha256'],
+        ['manifest', 'manifest.json'],
+        ['group_plan', 'session-01/groups/group-01.txt'],
+        ['prompt_metadata', 'session-01/metadata/prompt-metadata.json'],
+        ['validation', 'session-01/metadata/validation.json'],
+        ['prompt_a', 'session-01/prompts/A/001_tee-front_A.txt'],
+        ['prompt_b', 'session-01/prompts/B/001_tee-front_B.txt'],
+        ['prompt_pair', 'session-01/prompts/pairs/001_pair_execution.md'],
+      ]),
+    },
+    { name: 'group_a', scopeIndex: 4, entries: base(commonA) },
+    { name: 'group_b', scopeIndex: 5, entries: base(commonB) },
+    {
+      name: 'cover',
+      scopeIndex: 6,
+      entries: base([
+        ['readme', 'README.md'],
+        ['checksums', 'checksums.sha256'],
+        ['manifest', 'manifest.json'],
+        ['cover_metadata', 'session-01/cover/cover-metadata.json'],
+        ['cover_prompt', 'session-01/cover/cover-prompt.txt'],
+        ['prompt_metadata', 'session-01/metadata/prompt-metadata.json'],
+        ['validation', 'session-01/metadata/validation.json'],
+      ]),
+    },
+    {
+      name: 'session',
+      scopeIndex: 7,
+      entries: base([
+        ['readme', 'README.md'],
+        ['artwork_metadata', 'assets/artwork-metadata/artwork-canonical.json'],
+        ['checksums', 'checksums.sha256'],
+        ['manifest', 'manifest.json'],
+        ['cover_metadata', 'session-01/cover/cover-metadata.json'],
+        ['cover_prompt', 'session-01/cover/cover-prompt.txt'],
+        ['execution_plan', 'session-01/execution-plan.txt'],
+        ['group_plan', 'session-01/groups/group-01.txt'],
+        ['prompt_metadata', 'session-01/metadata/prompt-metadata.json'],
+        ['validation', 'session-01/metadata/validation.json'],
+        ['prompt_a', 'session-01/prompts/A/001_tee-front_A.txt'],
+        ['prompt_b', 'session-01/prompts/B/001_tee-front_B.txt'],
+        ['prompt_pair', 'session-01/prompts/pairs/001_pair_execution.md'],
+        ['session_summary', 'session-01/session-summary.md'],
+      ]),
+    },
+    {
+      name: 'execution_plan',
+      scopeIndex: 8,
+      entries: base([
+        ['readme', 'README.md'],
+        ['checksums', 'checksums.sha256'],
+        ['manifest', 'manifest.json'],
+        ['execution_plan', 'session-01/execution-plan.txt'],
+        ['prompt_metadata', 'session-01/metadata/prompt-metadata.json'],
+        ['validation', 'session-01/metadata/validation.json'],
+      ]),
+    },
+    { name: 'complete_project', scopeIndex: 9, entries: base(complete, 'item-09598bb4fca1') },
+    { name: 'all', scopeIndex: 15, entries: base(complete, 'item-09598bb4fca1') },
+  ];
 
-/** A real `session` scope plan spanning the two real, distinct canonical multi-scene scenes. */
-function sessionMultiScenePlan() {
-  const planResult = createExportPlan({
-    ...createCanonicalMultiSceneExportInput(),
-    scope: {
-      baseScope: ExportScope.Session,
-      scopeDetail: 'session',
-      sessionId: CANONICAL_SESSION_ID,
-    },
-  });
-  expect(planResult.ok).toBe(true);
-  if (!planResult.ok) throw new Error('unreachable');
-  expect(planResult.value.selection.outputsA.length).toBe(2);
-  expect(planResult.value.selection.outputsB.length).toBe(2);
-  return structuredClone(planResult.value);
-}
+  for (const testCase of cases) {
+    it(`${testCase.name}: exact ordered path/kind/count and double-run digest`, () => {
+      const input = createPackageFixture({ scope: CANONICAL_SCOPES[testCase.scopeIndex]! });
+      const first = packageExport(input);
+      const second = packageExport(input);
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      if (!first.ok || !second.ok) throw new Error('expected supported scope success');
+      expect(first.entries.map(({ kind, path }) => ({ kind, path }))).toEqual(testCase.entries);
+      expect(first.entries).toHaveLength(testCase.entries.length);
+      expect(second.zipSha256).toBe(first.zipSha256);
+      expect(second.zipBytes).toEqual(first.zipBytes);
+    });
+  }
 
-/**
- * A real `session` scope plan spanning THREE distinct scenes in one session -
- * needed for the "middle position" and "reordered (not merely reversed)"
- * mandatory matrix cases, which are indistinguishable from their two-scene
- * counterparts with fewer than three real identities.
- */
-function threeSceneSessionPlan() {
-  const base = createCanonicalMultiSceneExportInput();
-  const project = structuredClone(base.source.project) as Project;
-  const session = project.sessions[CANONICAL_SESSION_ID]!;
-  const templateSceneId = session.sceneOrder[0]!;
-  const templateScene = session.scenes[templateSceneId]!;
-  const thirdSceneId = 'scene-third' as SceneId;
-  const thirdOutputAId = 'output-a-third' as OutputAId;
-  const thirdOutputBId = 'output-b-third' as OutputBId;
-  const thirdScene = {
-    ...templateScene,
-    id: thirdSceneId,
-    outputA: { ...templateScene.outputA, id: thirdOutputAId, sceneId: thirdSceneId },
-    outputB: {
-      ...templateScene.outputB!,
-      id: thirdOutputBId,
-      sceneId: thirdSceneId,
-      sourceOutputAId: thirdOutputAId,
-    },
-  };
-  const updatedSession = {
-    ...session,
-    scenes: { ...session.scenes, [thirdSceneId]: thirdScene },
-    sceneOrder: [...session.sceneOrder, thirdSceneId],
-    requestedSceneCount: session.sceneOrder.length + 1,
-  };
-  project.sessions = { ...project.sessions, [CANONICAL_SESSION_ID]: updatedSession };
-  const planResult = createExportPlan({
-    ...base,
-    source: { ...base.source, project },
-    scope: {
-      baseScope: ExportScope.Session,
-      scopeDetail: 'session',
-      sessionId: CANONICAL_SESSION_ID,
-    },
-  });
-  expect(planResult.ok).toBe(true);
-  if (!planResult.ok) throw new Error('unreachable');
-  expect(planResult.value.numbering.length).toBe(3);
-  expect(planResult.value.selection.outputsA.length).toBe(3);
-  expect(planResult.value.selection.outputsB.length).toBe(3);
-  return structuredClone(planResult.value);
-}
+  for (const testCase of [
+    { name: 'full-project backup', scopeIndex: 10 },
+    { name: 'session backup', scopeIndex: 11 },
+    { name: 'version snapshot', scopeIndex: 12 },
+    { name: 'all-project prompt pack', scopeIndex: 13 },
+    { name: 'session prompt pack', scopeIndex: 14 },
+  ] as const) {
+    it(`${testCase.name}: exact rejected-scope failure and no bytes`, () => {
+      expectBlockingFailure(
+        packageExport(createPackageFixture({ scope: CANONICAL_SCOPES[testCase.scopeIndex]! })),
+        {
+          failures: [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope')!],
+          warnings: [],
+          omissions: [],
+        },
+      );
+    });
+  }
+});
 
 describe('Consolidated Final Corrective §8/§20.5 - numbering matrix', () => {
   it('canonical one-scene: numbering exactly matches the canonical scope A/B sequences', () => {
@@ -301,6 +367,11 @@ describe('Consolidated Final Corrective §8/§20.5 - numbering matrix', () => {
         sessionId: secondSessionId,
         sourceSaleImageIds: [extraOutputAId],
       },
+      // A real second session never shares a validation-result identity with
+      // another session; session1's own results are cleared here rather than
+      // copied verbatim, since this fixture's point is scene/output identity
+      // reuse, not validation-result content.
+      validationResults: {},
     };
     project.sessions = { [CANONICAL_SESSION_ID]: session1, [secondSessionId]: session2 };
     project.sessionOrder = [CANONICAL_SESSION_ID, secondSessionId];
@@ -734,556 +805,638 @@ describe('Consolidated Final Corrective §20.3 - remaining policy-injection comb
   });
 });
 
-describe('Deficiency Closure §5/F3 - independent numbering identity/scene-membership matrix', () => {
-  it('fake scene in a valid session, canonical A/B id sequence unchanged: rejected, no bytes', () => {
-    // Independent Audit F3 reproduction 1: only the row's own `sceneId` is
-    // forged to a scene that does not exist for this session - `outputAId`/
-    // `outputBId` (and therefore `scope.outputAIds`/`outputBIds`'s exact
-    // sequence) are left untouched, so only the independent scene-membership
-    // check (not the canonical-order check) can catch this.
+describe('Deficiency Closure §3-§8 - validated index, exact fields, omissions, and A/B order', () => {
+  function exactFailure(plan: ReturnType<typeof pairPlan>, code: string, field: string): void {
+    expectBlockingFailure(packageExport(packageInputFor({ ok: true, value: plan })), {
+      failures: [registeredExportFailure(code, field)!],
+      warnings: [],
+      omissions: [],
+    });
+  }
+
+  it('returns the required nested runtime-read-only validated index', () => {
     const plan = pairPlan();
-    const mutated: ExportPlan = {
+    const validation = validatePackagePlanIntegrity(plan, createPackageFixture().limits);
+    expect(validation.ok).toBe(true);
+    if (!validation.ok) throw new Error('expected validated index');
+    const row = plan.numbering[0]!;
+    expect(validation.value.numberingBySessionAndScene.get(row.sessionId)?.get(row.sceneId)).toBe(
+      row,
+    );
+    expect(validation.value.outputABySessionAndScene.get(row.sessionId)?.get(row.sceneId)).toBe(
+      plan.selection.outputsA[0],
+    );
+    expect(validation.value.outputBBySessionAndScene.get(row.sessionId)?.get(row.sceneId)).toBe(
+      plan.selection.outputsB[0],
+    );
+    expect(
+      (validation.value.numberingBySessionAndScene as unknown as { set?: unknown }).set,
+    ).toBeUndefined();
+  });
+
+  const SCOPE_ARRAY_CASES = [
+    {
+      name: 'sessionIds',
+      source: pairPlan,
+      mutate: (plan: ReturnType<typeof pairPlan>) => ({
+        ...plan,
+        scope: { ...plan.scope, sessionIds: [...plan.scope.sessionIds, plan.scope.sessionIds[0]!] },
+      }),
+    },
+    {
+      name: 'groupIds',
+      source: groupPlan,
+      mutate: (plan: ReturnType<typeof pairPlan>) => ({
+        ...plan,
+        scope: { ...plan.scope, groupIds: [...plan.scope.groupIds, plan.scope.groupIds[0]!] },
+      }),
+    },
+    {
+      name: 'sceneIds',
+      source: pairPlan,
+      mutate: (plan: ReturnType<typeof pairPlan>) => ({
+        ...plan,
+        scope: { ...plan.scope, sceneIds: [...plan.scope.sceneIds, plan.scope.sceneIds[0]!] },
+      }),
+    },
+    {
+      name: 'outputAIds',
+      source: pairPlan,
+      mutate: (plan: ReturnType<typeof pairPlan>) => ({
+        ...plan,
+        scope: { ...plan.scope, outputAIds: [...plan.scope.outputAIds, plan.scope.outputAIds[0]!] },
+      }),
+    },
+    {
+      name: 'outputBIds',
+      source: pairPlan,
+      mutate: (plan: ReturnType<typeof pairPlan>) => ({
+        ...plan,
+        scope: { ...plan.scope, outputBIds: [...plan.scope.outputBIds, plan.scope.outputBIds[0]!] },
+      }),
+    },
+  ] as const;
+
+  for (const testCase of SCOPE_ARRAY_CASES) {
+    it(`maps duplicate ${testCase.name} to its exact scope field`, () => {
+      const plan = testCase.mutate(testCase.source());
+      exactFailure(plan, 'EXPORT_SCOPE_001', `packaging.scope.${testCase.name}`);
+    });
+  }
+
+  for (const testCase of [
+    { name: 'coverIds', scope: CANONICAL_SCOPES[6]! },
+    { name: 'versionIds', scope: CANONICAL_SCOPES[12]! },
+  ] as const) {
+    it(`maps duplicate ${testCase.name} to its exact scope field`, () => {
+      const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: testCase.scope });
+      expect(planResult.ok).toBe(true);
+      if (!planResult.ok) throw new Error('unreachable');
+      const plan = structuredClone(planResult.value);
+      const mutated = {
+        ...plan,
+        scope: {
+          ...plan.scope,
+          [testCase.name]: [...plan.scope[testCase.name], plan.scope[testCase.name][0]!],
+        },
+      };
+      const validation = validatePackagePlanIntegrity(mutated, createPackageFixture().limits);
+      expect(validation).toEqual({
+        ok: false,
+        failures: [
+          registeredExportFailure('EXPORT_SCOPE_001', `packaging.scope.${testCase.name}`)!,
+        ],
+      });
+    });
+  }
+
+  it('rejects a fake scene in a valid session at the numbering stage even with later evidence removed', () => {
+    const plan = pairPlan();
+    const mutated = {
       ...plan,
-      numbering: plan.numbering.map((entry) => ({
-        ...entry,
-        sceneId: 'scene-fake-in-session' as SceneId,
+      numbering: plan.numbering.map((row) => ({
+        ...row,
+        sceneId: 'fake-scene' as SceneId,
       })),
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.numbering'),
-    );
-  });
-
-  it('duplicate (sessionId, sceneId) numbering identity, distinct canonical A ids preserved: rejected, no bytes', () => {
-    // Independent Audit F3 reproduction 2: two genuine numbering rows (their
-    // own outputAId/outputBId left exactly as-is, so `scope.outputAIds`'s
-    // exact sequence is undisturbed) are forged to share the same
-    // `(sessionId, sceneId)` identity - only the independent duplicate-
-    // identity check (not the canonical-order check) can catch this.
-    const plan = sessionMultiScenePlan();
-    expect(plan.numbering.length).toBe(2);
-    const [first, second] = plan.numbering;
-    const mutated: ExportPlan = {
-      ...plan,
-      numbering: [first!, { ...second!, sceneId: first!.sceneId }],
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.numbering'),
-    );
-  });
-
-  it('out-of-scope scene row at the first position (real, preserved canonical id): rejected, no bytes', () => {
-    const plan = sessionMultiScenePlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      numbering: plan.numbering.map((entry, index) =>
-        index === 0 ? { ...entry, sceneId: 'scene-out-of-scope' as SceneId } : entry,
-      ),
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.numbering'),
-    );
-  });
-
-  it('out-of-scope scene row at the middle position (real, preserved canonical id): rejected, no bytes', () => {
-    const plan = threeSceneSessionPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      numbering: plan.numbering.map((entry, index) =>
-        index === 1 ? { ...entry, sceneId: 'scene-out-of-scope' as SceneId } : entry,
-      ),
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.numbering'),
-    );
-  });
-
-  it('out-of-scope scene row at the last position (real, preserved canonical id): rejected, no bytes', () => {
-    const plan = sessionMultiScenePlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      numbering: plan.numbering.map((entry, index) =>
-        index === plan.numbering.length - 1
-          ? { ...entry, sceneId: 'scene-out-of-scope' as SceneId }
-          : entry,
-      ),
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.numbering'),
-    );
-  });
-
-  it('extra fabricated numbering row injected in the middle position: rejected, no bytes', () => {
-    const plan = sessionMultiScenePlan();
-    const extra = {
-      ...plan.numbering[0]!,
-      sceneId: 'scene-injected' as SceneId,
-      sceneNumber: 99,
-      outputAId: 'output-a-injected' as OutputAId,
-      outputALabel: '99A' as never,
-      outputBId: 'output-b-injected' as OutputBId,
-      outputBLabel: '99B' as never,
-    };
-    const mutated: ExportPlan = {
-      ...plan,
-      numbering: [plan.numbering[0]!, extra, plan.numbering[1]!],
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.numbering'),
-    );
-  });
-});
-
-describe('Deficiency Closure §6/F4 - partial selection and omission evidence matrix', () => {
-  it('pair: remove selected Output B and clear omissions/issues: rejected, no bytes', () => {
-    const plan = pairPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: { ...plan.selection, outputsB: [] },
-      omissions: [],
-      issues: [],
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsB'),
-    );
-  });
-
-  it('pair: remove selected Output A and Output B and clear omissions/issues: rejected, no bytes', () => {
-    const plan = pairPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: { ...plan.selection, outputsA: [], outputsB: [] },
-      omissions: [],
-      issues: [],
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsA'),
-    );
-  });
-
-  it('output_b: remove selected Output B and clear omissions/issues: rejected, no bytes', () => {
-    const plan = outputBOnlyPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: { ...plan.selection, outputsB: [] },
-      omissions: [],
-      issues: [],
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsB'),
-    );
-  });
-
-  it('session: remove one selected Output A and clear omissions/issues: rejected, no bytes', () => {
-    const plan = sessionMultiScenePlan();
-    const [firstOutputA] = plan.selection.outputsA;
-    const mutated: ExportPlan = {
-      ...plan,
+      groupNumbering: [],
       selection: {
         ...plan.selection,
-        outputsA: plan.selection.outputsA.filter((outputA) => outputA.id !== firstOutputA!.id),
+        outputsA: [],
+        outputsB: [],
+        groups: [],
+        groupPlans: [],
       },
-      omissions: [],
-      issues: [],
     };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsA'),
-    );
+    exactFailure(mutated, 'EXPORT_LINK_001', 'packaging.numbering');
   });
 
-  it('session: remove one selected Output B and clear omissions/issues: rejected, no bytes', () => {
-    const plan = sessionMultiScenePlan();
-    const [firstOutputB] = plan.selection.outputsB;
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: {
-        ...plan.selection,
-        outputsB: plan.selection.outputsB.filter((outputB) => outputB.id !== firstOutputB!.id),
-      },
-      omissions: [],
-      issues: [],
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsB'),
-    );
-  });
-
-  it('real partial pair (planner-produced, genuine B omission): succeeds, exact omission preserved, no B/pair file', () => {
-    // "Do not treat absence as implicit omission" cuts both ways: a real,
-    // planner-produced omission (never fabricated by this test) must still
-    // be accepted, not merely a hostile absence rejected.
-    const result = packageExport(
-      createPackageFixture({ omitOutputB: true, scope: CANONICAL_SCOPES[2] }),
-    );
+  it('rejects duplicate session/scene numbering identity while distinct canonical output IDs remain', () => {
+    const result = createExportPlan(createCanonicalMultiSceneExportInput());
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const kinds = result.entries.map((entry) => entry.kind);
-    expect(kinds).not.toContain('prompt_b');
-    expect(kinds).not.toContain('prompt_pair');
-    expect(result.omissions).toEqual([
-      {
-        artifactKind: 'output_b',
-        entityId: 'scene-001:output_b',
-        field: 'source.project.sessions.جلسة-001.scenes.scene-001.outputB',
-        code: 'EXPORT_SCOPE_002',
-      },
-    ]);
-  });
-});
-
-describe('Deficiency Closure §7/F5 - selected Output A exact field/order reconciliation matrix', () => {
-  it('sceneNumber changed only (label left agreeing with the real numbering row): rejected, no bytes', () => {
-    const plan = pairPlan();
-    const mutated: ExportPlan = {
+    if (!result.ok) throw new Error('unreachable');
+    const plan = structuredClone(result.value);
+    const first = plan.numbering[0]!;
+    const mutated = {
       ...plan,
+      numbering: plan.numbering.map((row, index) =>
+        index === 1 ? { ...row, sessionId: first.sessionId, sceneId: first.sceneId } : row,
+      ),
+      groupNumbering: [],
       selection: {
         ...plan.selection,
-        outputsA: plan.selection.outputsA.map((outputA) => ({
-          ...outputA,
-          sceneNumber: outputA.sceneNumber + 8,
-        })),
+        outputsA: [],
+        outputsB: [],
+        groups: [],
+        groupPlans: [],
       },
     };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsA'),
-    );
+    expectBlockingFailure(packageExport(packageInputFor({ ok: true, value: mutated })), {
+      failures: [registeredExportFailure('EXPORT_LINK_001', 'packaging.numbering')!],
+      warnings: [],
+      omissions: [],
+    });
   });
 
-  it('label changed only: rejected, no bytes', () => {
-    const plan = pairPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: {
-        ...plan.selection,
-        outputsA: plan.selection.outputsA.map((outputA) => ({
-          ...outputA,
-          label: '9A' as never,
-        })),
-      },
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsA'),
-    );
-  });
+  for (const position of ['first', 'middle', 'last'] as const) {
+    it(`rejects an extra out-of-scope numbering row in ${position} position`, () => {
+      const result = createExportPlan(createCanonicalMultiSceneExportInput());
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('unreachable');
+      const plan = structuredClone(result.value);
+      const fake = {
+        ...plan.numbering[0]!,
+        sceneId: `fake-scene-${position}` as SceneId,
+        sceneNumber: 99,
+        outputAId: `fake-a-${position}` as OutputAId,
+        outputALabel: '99A' as const,
+        outputBId: `fake-b-${position}` as OutputBId,
+        outputBLabel: '99B' as const,
+      };
+      const insertAt = position === 'first' ? 0 : position === 'last' ? plan.numbering.length : 1;
+      const insert = <T>(values: readonly T[], value: T): readonly T[] => [
+        ...values.slice(0, insertAt),
+        value,
+        ...values.slice(insertAt),
+      ];
+      const mutated = {
+        ...plan,
+        scope: {
+          ...plan.scope,
+          outputAIds: insert(plan.scope.outputAIds, fake.outputAId),
+          outputBIds: insert(plan.scope.outputBIds, fake.outputBId),
+        },
+        numbering: insert(plan.numbering, fake),
+        groupNumbering: [],
+        selection: {
+          ...plan.selection,
+          outputsA: [],
+          outputsB: [],
+          groups: [],
+          groupPlans: [],
+        },
+      };
+      expectBlockingFailure(packageExport(packageInputFor({ ok: true, value: mutated })), {
+        failures: [registeredExportFailure('EXPORT_LINK_001', 'packaging.numbering')!],
+        warnings: [],
+        omissions: [],
+      });
+    });
+  }
 
-  it('sceneNumber and label changed together (self-consistent, disagrees with the real numbering row): rejected, no bytes', () => {
-    const plan = pairPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: {
-        ...plan.selection,
-        outputsA: plan.selection.outputsA.map((outputA) => ({
-          ...outputA,
-          sceneNumber: 9,
-          label: '9A' as never,
-        })),
-      },
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsA'),
-    );
-  });
+  const A_FIELD_CASES = [
+    {
+      name: 'sceneNumber only',
+      mutate: (output: ReturnType<typeof pairPlan>['selection']['outputsA'][number]) => ({
+        ...output,
+        sceneNumber: output.sceneNumber + 8,
+      }),
+    },
+    {
+      name: 'label only',
+      mutate: (output: ReturnType<typeof pairPlan>['selection']['outputsA'][number]) => ({
+        ...output,
+        label: '9A' as const,
+      }),
+    },
+    {
+      name: 'sceneNumber and label together',
+      mutate: (output: ReturnType<typeof pairPlan>['selection']['outputsA'][number]) => ({
+        ...output,
+        sceneNumber: 9,
+        label: '9A' as const,
+      }),
+    },
+  ] as const;
+  for (const testCase of A_FIELD_CASES) {
+    it(`rejects selected A ${testCase.name} at the exact A field`, () => {
+      const plan = pairPlan();
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsA: plan.selection.outputsA.map(testCase.mutate),
+        },
+      };
+      exactFailure(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsA');
+    });
+  }
 
-  it('selected Output A array reversed: rejected, no bytes', () => {
-    const plan = sessionMultiScenePlan();
-    const mutated: ExportPlan = {
+  const B_FIELD_CASES = [
+    {
+      name: 'sceneNumber only',
+      mutate: (output: ReturnType<typeof pairPlan>['selection']['outputsB'][number]) => ({
+        ...output,
+        sceneNumber: output.sceneNumber + 8,
+      }),
+    },
+    {
+      name: 'label only',
+      mutate: (output: ReturnType<typeof pairPlan>['selection']['outputsB'][number]) => ({
+        ...output,
+        label: '9B' as const,
+      }),
+    },
+    {
+      name: 'sourceOutputALabel only',
+      mutate: (output: ReturnType<typeof pairPlan>['selection']['outputsB'][number]) => ({
+        ...output,
+        sourceOutputALabel: '9A' as const,
+      }),
+    },
+    {
+      name: 'all display fields together',
+      mutate: (output: ReturnType<typeof pairPlan>['selection']['outputsB'][number]) => ({
+        ...output,
+        sceneNumber: 9,
+        label: '9B' as const,
+        sourceOutputALabel: '9A' as const,
+      }),
+    },
+  ] as const;
+  for (const testCase of B_FIELD_CASES) {
+    it(`rejects selected B ${testCase.name} at the exact B field`, () => {
+      const plan = pairPlan();
+      const mutated = {
+        ...plan,
+        selection: {
+          ...plan.selection,
+          outputsB: plan.selection.outputsB.map(testCase.mutate),
+        },
+      };
+      exactFailure(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsB');
+    });
+  }
+
+  it('rejects reversed selected A order while the canonical ID set is unchanged', () => {
+    const planResult = createExportPlan(createCanonicalMultiSceneExportInput());
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    const plan = structuredClone(planResult.value);
+    const mutated = {
       ...plan,
       selection: { ...plan.selection, outputsA: [...plan.selection.outputsA].reverse() },
     };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsA'),
-    );
+    expectBlockingFailure(packageExport(packageInputFor({ ok: true, value: mutated })), {
+      failures: [registeredExportFailure('EXPORT_LINK_001', 'packaging.selection.outputsA')!],
+      warnings: [],
+      omissions: [],
+    });
   });
 
-  it('selected Output A array reordered with the same id set (not a simple reversal): rejected, no bytes', () => {
-    const plan = threeSceneSessionPlan();
-    const [first, second, third] = plan.selection.outputsA;
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: { ...plan.selection, outputsA: [third!, first!, second!] },
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsA'),
-    );
-  });
-});
-
-describe('Deficiency Closure §8/F6 - selected Output B exact field/order reconciliation matrix', () => {
-  it('sceneNumber changed only: rejected, no bytes', () => {
-    const plan = pairPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: {
-        ...plan.selection,
-        outputsB: plan.selection.outputsB.map((outputB) => ({
-          ...outputB,
-          sceneNumber: outputB.sceneNumber + 8,
-        })),
-      },
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsB'),
-    );
-  });
-
-  it('label changed only: rejected, no bytes', () => {
-    const plan = pairPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: {
-        ...plan.selection,
-        outputsB: plan.selection.outputsB.map((outputB) => ({
-          ...outputB,
-          label: '9B' as never,
-        })),
-      },
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsB'),
-    );
-  });
-
-  it('sourceOutputALabel changed only: rejected, no bytes', () => {
-    const plan = pairPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: {
-        ...plan.selection,
-        outputsB: plan.selection.outputsB.map((outputB) => ({
-          ...outputB,
-          sourceOutputALabel: '9A' as never,
-        })),
-      },
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsB'),
-    );
-  });
-
-  it('all three display fields changed together (self-consistent, disagrees with the real numbering row): rejected, no bytes', () => {
-    const plan = pairPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      selection: {
-        ...plan.selection,
-        outputsB: plan.selection.outputsB.map((outputB) => ({
-          ...outputB,
-          sceneNumber: 9,
-          label: '9B' as never,
-          sourceOutputALabel: '9A' as never,
-        })),
-      },
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsB'),
-    );
-  });
-
-  it('selected Output B array reversed: rejected, no bytes', () => {
-    const plan = sessionMultiScenePlan();
-    const mutated: ExportPlan = {
+  it('rejects reversed selected B order while the canonical ID set is unchanged', () => {
+    const planResult = createExportPlan(createCanonicalMultiSceneExportInput());
+    expect(planResult.ok).toBe(true);
+    if (!planResult.ok) throw new Error('unreachable');
+    const plan = structuredClone(planResult.value);
+    const mutated = {
       ...plan,
       selection: { ...plan.selection, outputsB: [...plan.selection.outputsB].reverse() },
     };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_LINK_001', 'packaging.selection.outputsB'),
-    );
-  });
-});
-
-describe('Deficiency Closure §9/F7 - group numbering exactness against authoritative group metadata', () => {
-  it('groupNumber changed with both Output A and Output B labels updated consistently: rejected, no bytes', () => {
-    const { plan } = twoSceneGroupPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      groupNumbering: plan.groupNumbering.map((row) => ({
-        ...row,
-        groupNumber: 9,
-        outputALabel: `9.${row.groupSceneNumber}-A` as never,
-        ...(row.outputBLabel !== undefined
-          ? { outputBLabel: `9.${row.groupSceneNumber}-B` as never }
-          : {}),
-      })),
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_GROUP_001', 'packaging.groupNumbering'),
-    );
+    expectBlockingFailure(packageExport(packageInputFor({ ok: true, value: mutated })), {
+      failures: [registeredExportFailure('EXPORT_LINK_001', 'packaging.selection.outputsB')!],
+      warnings: [],
+      omissions: [],
+    });
   });
 
-  it('groupSceneNumber changed with both Output A and Output B labels updated consistently: rejected, no bytes', () => {
-    // Independent Audit F7: the pre-existing "wrong groupSceneNumber" test
-    // only updated the A label, so its rejection did not actually prove the
-    // authoritative ordinal (not merely the row's own A/B self-consistency)
-    // was checked - this variant updates both labels together.
-    const { plan } = twoSceneGroupPlan();
-    const mutated: ExportPlan = {
-      ...plan,
-      groupNumbering: plan.groupNumbering.map((row, index) =>
-        index === 0
-          ? {
-              ...row,
-              groupSceneNumber: 9,
-              outputALabel: `${row.groupNumber}.9-A` as never,
-              ...(row.outputBLabel !== undefined
-                ? { outputBLabel: `${row.groupNumber}.9-B` as never }
-                : {}),
-            }
-          : row,
-      ),
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_GROUP_001', 'packaging.groupNumbering'),
-    );
-  });
-
-  it('two valid group-numbering rows physically reversed: rejected, no bytes', () => {
-    const { plan } = twoSceneGroupPlan();
-    expect(plan.groupNumbering.length).toBe(2);
-    const mutated: ExportPlan = {
-      ...plan,
-      groupNumbering: [...plan.groupNumbering].reverse(),
-    };
-    const result = packageExport(packageInputFor({ ok: true, value: mutated }));
-    expectBlockingFailure(
-      result,
-      blockingFailureFor(mutated, 'EXPORT_GROUP_001', 'packaging.groupNumbering'),
-    );
-  });
-});
-
-describe('Deficiency Closure §10/F10 - public ZIP writer hostile-runtime boundary', () => {
-  /** Calls `fn` and proves no exception escapes, regardless of what it returns. */
-  function callNeverThrows(fn: () => unknown): unknown {
-    let outcome: { readonly threw: false; readonly value: unknown } | { readonly threw: true };
-    try {
-      outcome = { threw: false, value: fn() };
-    } catch (error) {
-      outcome = { threw: true };
-      expect.fail(`writeDeterministicZip threw: ${String(error)}`);
-    }
-    return outcome.threw ? undefined : outcome.value;
+  const OMISSION_CASES = [
+    {
+      name: 'pair missing B',
+      scope: CANONICAL_SCOPES[2]!,
+      removeA: false,
+      removeB: true,
+      field: 'packaging.selection.outputsB',
+    },
+    {
+      name: 'pair missing A and B',
+      scope: CANONICAL_SCOPES[2]!,
+      removeA: true,
+      removeB: true,
+      field: 'packaging.selection.outputsA',
+    },
+    {
+      name: 'output_b missing B',
+      scope: CANONICAL_SCOPES[1]!,
+      removeA: false,
+      removeB: true,
+      field: 'packaging.selection.outputsB',
+    },
+  ] as const;
+  for (const testCase of OMISSION_CASES) {
+    it(`${testCase.name} with omissions/issues cleared fails closed`, () => {
+      const planResult = createExportPlan({ ...CANONICAL_EXPORT_INPUT, scope: testCase.scope });
+      expect(planResult.ok).toBe(true);
+      if (!planResult.ok) throw new Error('unreachable');
+      const plan = structuredClone(planResult.value);
+      const mutated = {
+        ...plan,
+        omissions: [],
+        issues: [],
+        partial: false,
+        selection: {
+          ...plan.selection,
+          outputsA: testCase.removeA ? [] : plan.selection.outputsA,
+          outputsB: testCase.removeB ? [] : plan.selection.outputsB,
+        },
+      };
+      expectBlockingFailure(packageExport(packageInputFor({ ok: true, value: mutated })), {
+        failures: [registeredExportFailure('EXPORT_LINK_001', testCase.field)!],
+        warnings: [],
+        omissions: [],
+      });
+    });
   }
 
-  it('null entries: typed failure, never throws', () => {
-    const result = callNeverThrows(() => writeDeterministicZip(null as never, 100, 1_000_000));
-    expect((result as { ok: boolean }).ok).toBe(false);
-  });
-
-  it('non-array entries: typed failure, never throws', () => {
-    const hostile = { length: 1, 0: { path: 'a', bytes: new Uint8Array() } };
-    const result = callNeverThrows(() => writeDeterministicZip(hostile as never, 100, 1_000_000));
-    expect((result as { ok: boolean }).ok).toBe(false);
-  });
-
-  it('sparse entry array: typed failure, never throws', () => {
-    const sparse: unknown[] = new Array(2);
-    sparse[1] = { path: 'a', bytes: new Uint8Array() };
-    const result = callNeverThrows(() => writeDeterministicZip(sparse as never, 100, 1_000_000));
-    expect((result as { ok: boolean }).ok).toBe(false);
-  });
-
-  it('entry with a throwing path getter: typed failure, never throws', () => {
-    const hostile = [
-      {
-        get path(): string {
-          throw new Error('boom');
+  for (const artifact of ['outputsA', 'outputsB'] as const) {
+    it(`session scope cannot silently remove one selected ${artifact === 'outputsA' ? 'A' : 'B'}`, () => {
+      const planResult = createExportPlan(createCanonicalMultiSceneExportInput());
+      expect(planResult.ok).toBe(true);
+      if (!planResult.ok) throw new Error('unreachable');
+      const plan = structuredClone(planResult.value);
+      const mutated = {
+        ...plan,
+        omissions: [],
+        issues: [],
+        partial: false,
+        selection: {
+          ...plan.selection,
+          [artifact]: plan.selection[artifact].slice(1),
         },
-        bytes: new Uint8Array(),
-      },
-    ];
-    const result = callNeverThrows(() => writeDeterministicZip(hostile as never, 100, 1_000_000));
-    expect((result as { ok: boolean }).ok).toBe(false);
-  });
-
-  it('throwing Proxy entry: typed failure, never throws', () => {
-    const hostile = [
-      new Proxy(
-        {},
-        {
-          get(): never {
-            throw new Error('boom');
-          },
-        },
-      ),
-    ];
-    const result = callNeverThrows(() => writeDeterministicZip(hostile as never, 100, 1_000_000));
-    expect((result as { ok: boolean }).ok).toBe(false);
-  });
-
-  it('throwing Proxy-wrapped entries array: typed failure, never throws', () => {
-    const real = [{ path: 'a', bytes: new Uint8Array([1, 2, 3]) }];
-    const hostile = new Proxy(real, {
-      get(target, property): unknown {
-        if (property === 'length') throw new Error('boom');
-        return Reflect.get(target, property);
-      },
+      };
+      expectBlockingFailure(packageExport(packageInputFor({ ok: true, value: mutated })), {
+        failures: [registeredExportFailure('EXPORT_LINK_001', `packaging.selection.${artifact}`)!],
+        warnings: [],
+        omissions: [],
+      });
     });
-    const result = callNeverThrows(() => writeDeterministicZip(hostile as never, 100, 1_000_000));
-    expect((result as { ok: boolean }).ok).toBe(false);
-  });
+  }
 
-  it('entry with a non-string path: typed failure, never throws', () => {
-    const hostile = [{ path: 123, bytes: new Uint8Array() }];
-    const result = callNeverThrows(() => writeDeterministicZip(hostile as never, 100, 1_000_000));
-    expect((result as { ok: boolean }).ok).toBe(false);
+  it('a real partial pair succeeds with exact omission and no B/pair file', () => {
+    const input = createPackageFixture({ omitOutputB: true, scope: CANONICAL_SCOPES[2] });
+    expect(input.planResult.ok).toBe(true);
+    if (!input.planResult.ok) throw new Error('unreachable');
+    const result = packageExport(input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected real partial success');
+    expect(result.omissions).toEqual(input.planResult.value.omissions);
+    expect(result.warnings).toEqual(
+      input.planResult.value.issues.filter((issue) => issue.severity === 'warning'),
+    );
+    expect(result.entries.some((entry) => entry.kind === 'prompt_b')).toBe(false);
+    expect(result.entries.some((entry) => entry.kind === 'prompt_pair')).toBe(false);
   });
+});
 
-  it('entry with non-Uint8Array bytes: typed failure, never throws', () => {
-    const hostile = [{ path: 'a', bytes: 'not-bytes' }];
-    const result = callNeverThrows(() => writeDeterministicZip(hostile as never, 100, 1_000_000));
-    expect((result as { ok: boolean }).ok).toBe(false);
-  });
+describe('Deficiency Closure §9 - authoritative ordered group-numbering rows', () => {
+  const HOSTILE_GROUP_CASES = [
+    {
+      name: 'hostile groupNumber with internally matching labels',
+      mutate: (rows: ReturnType<typeof twoSceneGroupPlan>['plan']['groupNumbering']) =>
+        rows.map((row) => ({
+          ...row,
+          groupNumber: 9,
+          outputALabel: `9.${row.groupSceneNumber}-A` as never,
+          ...(row.outputBId === undefined
+            ? {}
+            : { outputBLabel: `9.${row.groupSceneNumber}-B` as never }),
+        })),
+    },
+    {
+      name: 'hostile groupSceneNumber with internally matching labels',
+      mutate: (rows: ReturnType<typeof twoSceneGroupPlan>['plan']['groupNumbering']) =>
+        rows.map((row, index) =>
+          index === 0
+            ? {
+                ...row,
+                groupSceneNumber: 9,
+                outputALabel: `${row.groupNumber}.9-A` as never,
+                ...(row.outputBId === undefined
+                  ? {}
+                  : { outputBLabel: `${row.groupNumber}.9-B` as never }),
+              }
+            : row,
+        ),
+    },
+    {
+      name: 'reversed complete row sequence',
+      mutate: (rows: ReturnType<typeof twoSceneGroupPlan>['plan']['groupNumbering']) =>
+        [...rows].reverse(),
+    },
+  ] as const;
+  for (const testCase of HOSTILE_GROUP_CASES) {
+    it(`rejects ${testCase.name}`, () => {
+      const { plan } = twoSceneGroupPlan();
+      const mutated = { ...plan, groupNumbering: testCase.mutate(plan.groupNumbering) };
+      expectBlockingFailure(packageExport(packageInputFor({ ok: true, value: mutated })), {
+        failures: [registeredExportFailure('EXPORT_GROUP_001', 'packaging.groupNumbering')!],
+        warnings: [],
+        omissions: [],
+      });
+    });
+  }
+});
 
-  it('entry with inherited (not own) path/bytes fields: never throws', () => {
-    const proto = { path: 'a/inherited.txt', bytes: new Uint8Array([1, 2, 3]) };
-    const entry = Object.create(proto) as { path: string; bytes: Uint8Array };
-    const result = callNeverThrows(() => writeDeterministicZip([entry] as never, 100, 1_000_000));
-    expect(typeof (result as { ok: boolean }).ok).toBe('boolean');
+describe('Deficiency Closure §10 - public ZIP writer hostile-runtime matrix', () => {
+  const bytes = new TextEncoder().encode('safe');
+  const valid = makeEntry(
+    'project/file.txt',
+    'readme',
+    'markdown',
+    'text/markdown;charset=utf-8',
+    bytes,
+  );
+  const sparse: PackageEntry[] = [];
+  sparse.length = 1;
+  const inherited = Object.create(valid) as PackageEntry;
+  const accessor = { ...valid } as Record<string, unknown>;
+  Object.defineProperty(accessor, 'path', {
+    enumerable: true,
+    get() {
+      throw new Error('accessor must not run');
+    },
   });
+  const throwingProxy = new Proxy([] as PackageEntry[], {
+    getPrototypeOf() {
+      throw new Error('proxy trap');
+    },
+  });
+  const cases: readonly { readonly name: string; readonly value: unknown }[] = [
+    { name: 'null', value: null },
+    { name: 'non-array', value: {} },
+    { name: 'sparse array', value: sparse },
+    { name: 'accessor-backed entry', value: [accessor] },
+    { name: 'throwing proxy', value: throwingProxy },
+    { name: 'non-string path', value: [{ ...valid, path: 4 }] },
+    { name: 'non-Uint8Array bytes', value: [{ ...valid, bytes: 'bytes' }] },
+    { name: 'inherited fields', value: [inherited] },
+  ];
+  for (const testCase of cases) {
+    it(`returns a typed no-bytes failure for ${testCase.name}`, () => {
+      let result: ReturnType<typeof writeDeterministicZip> | undefined;
+      expect(() => {
+        result = writeDeterministicZip(testCase.value as readonly PackageEntry[], 100, 1_000_000);
+      }).not.toThrow();
+      expect(result?.ok).toBe(false);
+      expect(result && 'bytes' in result).toBe(false);
+    });
+  }
+});
+
+describe('Deficiency Closure §12 - complete scope-policy injection matrix', () => {
+  function scopedPlan(scopeIndex: number) {
+    const result = createExportPlan({
+      ...CANONICAL_EXPORT_INPUT,
+      scope: CANONICAL_SCOPES[scopeIndex]!,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    return structuredClone(result.value);
+  }
+
+  const cases = [
+    {
+      name: 'projectMetadata/project',
+      base: 0,
+      donor: 9,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        project: donor.selection.project,
+      }),
+    },
+    {
+      name: 'sessionMetadata/sessions',
+      base: 0,
+      donor: 7,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        sessions: donor.selection.sessions,
+      }),
+    },
+    {
+      name: 'sceneMetadata/scenes',
+      base: 0,
+      donor: 7,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        scenes: donor.selection.scenes,
+      }),
+    },
+    {
+      name: 'outputA/outputsA',
+      base: 1,
+      donor: 0,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        outputsA: donor.selection.outputsA,
+      }),
+    },
+    {
+      name: 'outputB/outputsB',
+      base: 0,
+      donor: 1,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        outputsB: donor.selection.outputsB,
+      }),
+    },
+    {
+      name: 'groupMetadata/groups',
+      base: 0,
+      donor: 3,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        groups: donor.selection.groups,
+      }),
+    },
+    {
+      name: 'groupPlans/groupPlans',
+      base: 0,
+      donor: 3,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        groupPlans: donor.selection.groupPlans,
+      }),
+    },
+    {
+      name: 'executionPlans/executionPlans',
+      base: 0,
+      donor: 8,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        executionPlans: donor.selection.executionPlans,
+      }),
+    },
+    {
+      name: 'cover/covers',
+      base: 0,
+      donor: 6,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        covers: donor.selection.covers,
+      }),
+    },
+    {
+      name: 'artworkMetadata/artworks',
+      base: 0,
+      donor: 1,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        artworks: donor.selection.artworks,
+      }),
+    },
+    {
+      name: 'validationResults/validationResults',
+      base: 0,
+      donor: 7,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        validationResults: donor.selection.validationResults,
+      }),
+    },
+    {
+      name: 'versionMetadata/versions',
+      base: 0,
+      donor: 12,
+      inject: (base: ReturnType<typeof scopedPlan>, donor: ReturnType<typeof scopedPlan>) => ({
+        ...base.selection,
+        versions: donor.selection.versions,
+      }),
+    },
+  ] as const;
+
+  for (const testCase of cases) {
+    it(`${testCase.name}: exact policy failure and no bytes`, () => {
+      const base = scopedPlan(testCase.base);
+      const donor = scopedPlan(testCase.donor);
+      const mutated = {
+        ...base,
+        selection: testCase.inject(base, donor),
+      };
+      expectBlockingFailure(packageExport(packageInputFor({ ok: true, value: mutated })), {
+        failures: [registeredExportFailure('EXPORT_SCOPE_001', 'packaging.scope.policy')!],
+        warnings: [],
+        omissions: [],
+      });
+    });
+  }
 });

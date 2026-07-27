@@ -1,49 +1,40 @@
 /**
- * Consolidated Final Corrective §21 / Deficiency Closure §11 - committed,
+ * Consolidated Final Corrective §21 / Final Controlled Merge - committed,
  * reproducible external ZIP verification.
  *
  * Generates all 10 locked golden ZIP fixtures (plus one deliberately
  * physically-reordered-but-Info-ZIP-tolerated hostile archive) from the
  * *current* code via `test/export-engine/packaging/golden-zip-dump.test.ts`,
- * then independently verifies every fixture using the system `unzip` binary
- * - never trusting the writer's own in-memory bookkeeping. Prints one
- * PASS/FAIL row per fixture and exits non-zero on any failure.
- *
- * Deficiency Closure §11 closes F8: the on-disk `checksums.sha256` is parsed
- * into an ordered path->digest map and reconciled against SHA-256 digests
- * freshly recomputed from the *extracted* bytes on disk (not the in-memory
- * packaging ledger); the on-disk `manifest.json` is validated with the same
- * authoritative schema validator packaging itself uses
- * (`validateExportManifestShape`) and its `includedFiles`/`fileSizes`/
- * `checksums` are reconciled against the real extracted directory listing.
- * Either bookkeeping file being tampered on disk - independent of whatever
- * the in-memory ledger still says - must be caught here. The pure
- * reconciliation logic lives in `scripts/zip-external-verification.mts`.
+ * then independently verifies every fixture using the system `unzip`
+ * binary - never trusting the writer's own bookkeeping. Prints one PASS/FAIL
+ * row per fixture and exits non-zero on any failure.
  *
  * This is a verification script, not the pure packaging core, so it may use
- * Node filesystem/process APIs, shell out to `unzip`, and run under
- * `vite-node` (a script, not a public packaging function - the "never
- * throws" boundary applies to `src/export/packaging`, not to this CLI tool).
+ * Node filesystem/process APIs and shell out to `unzip` directly. On-disk
+ * reconciliation itself lives in `./zip-external-verification.mts`, an
+ * independent, testable module - this file is orchestration only.
  */
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  findSingleFile,
-  listFilesRecursive,
-  verifyChecksumsFileOnDisk,
-  verifyManifestFileOnDisk,
+  discoverPackageRoot,
+  isUnsafeListedPath,
+  type LedgerEntry,
+  listRegularFiles,
+  parseUnzipListing,
+  sha256,
+  verifyOnDiskBookkeeping,
 } from './zip-external-verification.mts';
+import { compareUtf8 } from '../src/export/runtime';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-interface LedgerEntry {
-  readonly path: string;
-  readonly kind: string;
-  readonly checksum: string;
+interface VerificationRow {
+  readonly pass: boolean;
+  readonly line: string;
 }
 
 function ensureUnzipAvailable(): void {
@@ -58,34 +49,12 @@ function ensureUnzipAvailable(): void {
   }
 }
 
-function isUnsafeListedPath(candidate: string): boolean {
-  return (
-    candidate.startsWith('/') ||
-    candidate.includes('..') ||
-    /^[a-zA-Z]:/.test(candidate) ||
-    candidate.includes('\\') ||
-    candidate.includes('//')
-  );
-}
-
-/** Parses `unzip -l` output into an array of listed entry paths. */
-function parseUnzipListing(listingText: string): string[] {
-  const lines = listingText.split('\n');
-  // Header: "Archive: ...", "  Length ... Name", "--------- ... ----"
-  // Footer: "---------  ... -------", "N     N files"
-  const entryLines = lines.slice(3, -3);
-  return entryLines
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => line.split(/\s+/).slice(3).join(' '));
-}
-
 function verifyOneFixture(
   name: string,
   zipPath: string,
   entries: readonly LedgerEntry[],
   dumpDir: string,
-): { readonly pass: boolean; readonly line: string } {
+): VerificationRow {
   const problems: string[] = [];
 
   try {
@@ -108,8 +77,8 @@ function verifyOneFixture(
     }
   }
 
-  const expectedPaths = [...entries.map((entry) => entry.path)].sort();
-  const actualPaths = [...listedPaths].sort();
+  const expectedPaths = [...entries.map((entry) => entry.path)].sort(compareUtf8);
+  const actualPaths = [...listedPaths].sort(compareUtf8);
   if (JSON.stringify(expectedPaths) !== JSON.stringify(actualPaths)) {
     problems.push(
       `entry path set mismatch (expected ${expectedPaths.length}, listed ${actualPaths.length})`,
@@ -124,7 +93,7 @@ function verifyOneFixture(
   }
 
   for (const entry of entries) {
-    const filePath = path.join(extractDir, ...entry.path.split('/'));
+    const filePath = path.join(extractDir, entry.path);
     let bytes: Buffer;
     try {
       bytes = readFileSync(filePath);
@@ -132,35 +101,13 @@ function verifyOneFixture(
       problems.push(`missing extracted file: ${entry.path}`);
       continue;
     }
-    const actualChecksum = createHash('sha256').update(bytes).digest('hex');
+    const actualChecksum = sha256(bytes);
     if (actualChecksum !== entry.checksum) {
       problems.push(`checksum mismatch: ${entry.path}`);
     }
   }
 
-  // Deficiency Closure §11: independent, on-disk semantic reconciliation of
-  // the extracted bookkeeping files - never relying solely on the in-memory
-  // ledger above.
-  const checksumsEntry = entries.find((entry) => entry.kind === 'checksums');
-  const manifestEntry = entries.find((entry) => entry.kind === 'manifest');
-  if (checksumsEntry !== undefined || manifestEntry !== undefined) {
-    const projectRootFile =
-      checksumsEntry !== undefined
-        ? findSingleFile(extractDir, 'checksums.sha256')
-        : findSingleFile(extractDir, 'manifest.json');
-    if (projectRootFile === null) {
-      problems.push('could not locate the project root folder in the extracted archive');
-    } else {
-      const projectRoot = path.dirname(projectRootFile);
-      const realExtractedPaths = new Set(listFilesRecursive(projectRoot));
-      if (checksumsEntry !== undefined) {
-        verifyChecksumsFileOnDisk(projectRoot, realExtractedPaths, problems);
-      }
-      if (manifestEntry !== undefined) {
-        verifyManifestFileOnDisk(projectRoot, realExtractedPaths, problems);
-      }
-    }
-  }
+  verifyOnDiskBookkeeping(extractDir, problems, name);
 
   const pass = problems.length === 0;
   return {
@@ -171,10 +118,65 @@ function verifyOneFixture(
   };
 }
 
-function verifyReorderedHostileCase(dumpDir: string): {
-  readonly pass: boolean;
-  readonly line: string;
-} {
+function tamperVerificationRow(
+  name: string,
+  zipPath: string,
+  dumpDir: string,
+  tamper: (extractDir: string, root: string) => void,
+  expectedProblem: string,
+): VerificationRow {
+  const extractDir = path.join(dumpDir, `${name}-extract`);
+  const problems: string[] = [];
+  try {
+    execFileSync('unzip', ['-n', '-q', zipPath, '-d', extractDir], { stdio: 'pipe' });
+    const actualPaths = listRegularFiles(extractDir);
+    const discoveryProblems: string[] = [];
+    const root = discoverPackageRoot(actualPaths, discoveryProblems, name);
+    if (!root) throw new Error(discoveryProblems.join('; '));
+    tamper(extractDir, root);
+    verifyOnDiskBookkeeping(extractDir, problems, name);
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : 'tamper exercise failed');
+  }
+  const pass = problems.some((problem) => problem.includes(expectedProblem));
+  return {
+    pass,
+    line:
+      `${pass ? 'PASS' : 'FAIL'}  ${name}  ` +
+      `(tampered on-disk bookkeeping ${pass ? 'rejected' : 'was not rejected as required'})`,
+  };
+}
+
+function verifyBookkeepingTamperCases(dumpDir: string): VerificationRow[] {
+  const zipPath = path.join(dumpDir, 'a-b-pair.zip');
+  const checksumRow = tamperVerificationRow(
+    'tampered-checksums-with-unchanged-ledger',
+    zipPath,
+    dumpDir,
+    (extractDir, root) => {
+      const target = path.join(extractDir, root, 'checksums.sha256');
+      const text = readFileSync(target, 'utf8');
+      writeFileSync(target, text.replace(/^[a-f0-9]{64}/u, '0'.repeat(64)));
+    },
+    'digest mismatch',
+  );
+  const manifestRow = tamperVerificationRow(
+    'tampered-manifest-with-unchanged-ledger',
+    zipPath,
+    dumpDir,
+    (extractDir, root) => {
+      const target = path.join(extractDir, root, 'manifest.json');
+      const manifest = JSON.parse(readFileSync(target, 'utf8'));
+      const firstPath = manifest.includedFiles[0].path;
+      manifest.fileSizes[firstPath] += 1;
+      writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`);
+    },
+    'fileSizes mismatch',
+  );
+  return [checksumRow, manifestRow];
+}
+
+function verifyReorderedHostileCase(dumpDir: string): VerificationRow {
   const zipPath = path.join(dumpDir, 'reordered-hostile.zip');
   let externalAccepted = false;
   try {
@@ -186,7 +188,7 @@ function verifyReorderedHostileCase(dumpDir: string): {
 
   const verification = JSON.parse(
     readFileSync(path.join(dumpDir, 'reordered-hostile-verification.json'), 'utf8'),
-  ) as { ok: boolean; reason?: string; detail?: string };
+  );
   const internalRejectedAsExpected =
     verification.ok === false &&
     verification.reason === 'structural' &&
@@ -216,13 +218,17 @@ function main(): void {
       env: { ...process.env, GOLDEN_ZIP_DUMP_DIR: dumpDir },
     });
 
-    const ledger = JSON.parse(readFileSync(path.join(dumpDir, 'ledger.json'), 'utf8')) as Record<
-      string,
-      LedgerEntry[]
-    >;
+    const ledger: Record<string, LedgerEntry[]> = JSON.parse(
+      readFileSync(path.join(dumpDir, 'ledger.json'), 'utf8'),
+    );
     for (const [name, entries] of Object.entries(ledger)) {
       const zipPath = path.join(dumpDir, `${name}.zip`);
       const row = verifyOneFixture(name, zipPath, entries, dumpDir);
+      console.log(row.line);
+      if (!row.pass) anyFailed = true;
+    }
+
+    for (const row of verifyBookkeepingTamperCases(dumpDir)) {
       console.log(row.line);
       if (!row.pass) anyFailed = true;
     }

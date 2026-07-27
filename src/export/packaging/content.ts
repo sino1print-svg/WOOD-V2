@@ -7,13 +7,20 @@
  * allowlisted projection built with the same bounded builder/canonical JSON
  * primitives Batch 10.3 introduced.
  */
-import { ValidationSeverity, type SessionId } from '../../shared/domain-model';
+import {
+  ValidationSeverity,
+  type SessionId,
+  type ValidationFailure,
+} from '../../shared/domain-model';
 import type {
   ExportNumberingEntry,
-  ExportPlan,
+  ExportPlanOmission,
   ExportSelectedArtworkMetadata,
   ExportSelectedCover,
   ExportSelectedExecutionPlan,
+  ExportSelectedGroupPlan,
+  ExportSelectedOutputA,
+  ExportSelectedOutputB,
   ExportSelectedProject,
   ExportSelectedPromptMetadata,
   ExportSelectedSession,
@@ -238,33 +245,34 @@ export function buildCoverMetadataJson(
   );
 }
 
+/**
+ * Independent Audit F2: every argument here is already a validated,
+ * session-scoped slice of `ValidatedPackagePlanIndex` - this never reads or
+ * re-filters a raw `plan.selection.*` array itself.
+ */
 export function buildPromptMetadataJson(
   sessionId: SessionId,
-  plan: ExportPlan,
+  sessionOutputsA: readonly ExportSelectedOutputA[],
+  sessionOutputsB: readonly ExportSelectedOutputB[],
+  sessionGroupPlans: readonly ExportSelectedGroupPlan[],
+  cover: ExportSelectedCover | undefined,
   limits: ContentLimits,
 ): BuiltTextDocument | null {
-  const outputsA = plan.selection.outputsA
-    .filter((item) => item.sessionId === sessionId)
-    .map((item) => ({
-      id: item.id,
-      label: item.label,
-      promptMeta: promptMetadataToJson(item.promptMeta),
-    }));
-  const outputsB = plan.selection.outputsB
-    .filter((item) => item.sessionId === sessionId)
-    .map((item) => ({
-      id: item.id,
-      label: item.label,
-      promptMeta: promptMetadataToJson(item.promptMeta),
-    }));
-  const groupPlans = plan.selection.groupPlans
-    .filter((item) => item.sessionId === sessionId)
-    .map((item) => ({
-      groupId: item.groupId,
-      groupNumber: item.groupNumber,
-      promptMeta: promptMetadataToJson(item.promptMeta),
-    }));
-  const cover = plan.selection.covers.find((item) => item.sessionId === sessionId);
+  const outputsA = sessionOutputsA.map((item) => ({
+    id: item.id,
+    label: item.label,
+    promptMeta: promptMetadataToJson(item.promptMeta),
+  }));
+  const outputsB = sessionOutputsB.map((item) => ({
+    id: item.id,
+    label: item.label,
+    promptMeta: promptMetadataToJson(item.promptMeta),
+  }));
+  const groupPlans = sessionGroupPlans.map((item) => ({
+    groupId: item.groupId,
+    groupNumber: item.groupNumber,
+    promptMeta: promptMetadataToJson(item.promptMeta),
+  }));
   return serializeJson(
     {
       schemaVersion: 1,
@@ -297,21 +305,29 @@ function validationFailureToJson(
   };
 }
 
+/**
+ * Independent Audit F2: `sessionValidationResults` is already the
+ * validated, session-scoped slice from `ValidatedPackagePlanIndex`, never a
+ * raw `plan.selection.validationResults` re-filter. `issues`/`omissions`/
+ * `partial` are the plan's own audit trail (not selected artifact data
+ * subject to identity reconciliation) and are read directly from the plan.
+ */
 export function buildValidationJson(
   sessionId: SessionId,
-  plan: ExportPlan,
+  sessionValidationResults: readonly ExportSelectedValidationResult[],
+  issues: readonly ValidationFailure[],
+  omissions: readonly ExportPlanOmission[],
+  partial: boolean,
   limits: ContentLimits,
 ): BuiltTextDocument | null {
-  const validationResults = plan.selection.validationResults
-    .filter((result) => result.sessionId === sessionId)
-    .map((result) => ({
-      id: result.id,
-      sessionId: result.sessionId,
-      passed: result.passed,
-      checks: result.checks.map((check) => ({ check: check.check, passed: check.passed })),
-      failures: result.failures.map(validationFailureToJson),
-    }));
-  const issues = plan.issues
+  const validationResults = sessionValidationResults.map((result) => ({
+    id: result.id,
+    sessionId: result.sessionId,
+    passed: result.passed,
+    checks: result.checks.map((check) => ({ check: check.check, passed: check.passed })),
+    failures: result.failures.map(validationFailureToJson),
+  }));
+  const warningIssues = issues
     .filter((issue) => issue.severity === ValidationSeverity.Warning)
     .map((issue) => {
       const registered = ERROR_BY_CODE[issue.code];
@@ -323,7 +339,7 @@ export function buildValidationJson(
         messageEn: registered?.messageEn ?? issue.code,
       };
     });
-  const omissions = plan.omissions.map((omission) => {
+  const omissionsJson = omissions.map((omission) => {
     const registered = ERROR_BY_CODE[omission.code];
     return {
       artifactKind: omission.artifactKind,
@@ -338,10 +354,10 @@ export function buildValidationJson(
     {
       schemaVersion: 1,
       sessionId,
-      partial: plan.partial,
+      partial,
       validationResults,
-      issues,
-      omissions,
+      issues: warningIssues,
+      omissions: omissionsJson,
     },
     limits,
   );
