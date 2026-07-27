@@ -1,0 +1,100 @@
+{
+  "package": "mockup-photoshoot-director-phase10-batch10.4-final-controlled-merge",
+  "phase": "Phase 10 — Batch 10.4 — Final Controlled Merge and Closure",
+  "status": "PHASE 10 — BATCH 10.4 FINAL CONTROLLED MERGE COMPLETE — READY FOR INDEPENDENT AUDIT",
+  "created_at_utc": "2026-07-27T00:30:00Z",
+  "contents": "Complete runnable working tree (git-ready). node_modules/dist/.git excluded; run npm ci to install.",
+  "commit": "e466d29",
+  "commit_note": "This field is necessarily written before the commit that embeds it is finalized (a commit's hash depends on its own tree, which includes this file), so it may be one amendment behind the true final hash. The outer delivery ZIP's own file comment and the accompanying .zip.sha256/Completion Report are computed after the commit is final and are authoritative.",
+  "base_programmer_1_checkpoint": {
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-consolidated-final-corrective-deficiency-closure.zip",
+    "sha256": "a1b94d6f1ad0ab9906c3180f012d32cc27c5d1f121292bbbd6f9695d74557ed5",
+    "declared_commit": "b5fe0f72e5dff8586e22ba78ca4b7f149ce24ce6",
+    "role": "Sole implementation base, per the Two-Programmer-Comparison audit's recommendation.",
+    "verified_on_receipt": true
+  },
+  "reference_programmer_2_checkpoint": {
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-consolidated-final-deficiency-closure.zip",
+    "sha256": "28d156ceff2b1d1ecc6d0c45af77fa3e99684324a08f0e90f10d7fe0089618eb",
+    "declared_commit": "0e247751df21c753e4330ed1974ca411172bc813",
+    "role": "Read-only reference only. Never used as an implementation base or replacement. Only the four named improvements in §8.1 of the merge instructions were ported, each re-implemented inside Programmer 1's architecture rather than copied wholesale.",
+    "verified_on_receipt": true
+  },
+  "merge_scope": "Controlled merge closing the three blocking findings (F1/F2/F3) of the Deficiency-Closure Independent Audit against Programmer 1's checkpoint, plus the four explicitly allowed ports from Programmer 2 (§8.1). No Batch 10.5, UI, Clipboard, Download, Backup/Restore, Prompt Pack, Export Center, persistence-write, browser-filesystem, or external-integration implementation was started.",
+  "findings_addressed": {
+    "F1": "A selected Output B could survive a deleted/omitted selected Output A in a pair-bearing scope (exact audit reproduction: remove selected A, add a valid A omission + matching issue, keep selected B, mark plan partial). validateSelectedB now requires a genuine matching selected Output A for the same (sessionId, sceneId) whenever scope.policy.outputA is true, reusing validateSelectedA's already-trusted result. Idea ported from Programmer 2's validateSelectedOutputB check, re-implemented inside Programmer 1's ValidatedPackagePlanIndex architecture.",
+    "F2": "The validator only checked bare uniqueness (or nothing) for sessions/executionPlans/covers/groupPlans, never reconciled project identity against scope.projectId, and content construction still read raw plan.selection.project/versions/artworks/outputsA/outputsB/groupPlans/validationResults directly (exact audit reproduction: selection.project.id forged while scope.projectId unchanged). Adds validateProject, validateSessions, validateScenes, validateExecutionPlans, validateCovers, validateArtworks, validateVersions, validateValidationResults, and validateProvenance, each anchored against scope/numbering/groups. ValidatedPackagePlanIndex now exposes project/versionsById/artworksById/validationResultsBySession. buildPackageContentEntries, buildPromptMetadataJson, and buildValidationJson consume these validated, session-scoped slices instead of raw plan.selection.* arrays.",
+    "F3": "A selected group plan's groupNumber could contradict its own selected group's authoritative groupNumber while groupNumbering agreed with the forged value (exact audit reproduction: selection.groups[0].groupNumber 1->9 with matching groupNumbering rows, but selection.groupPlans[0].groupNumber stays 1). validateGroupPlans now requires each group plan's groupNumber to equal the real selected group's own field from the already-validated group index, with omission-aware completeness when policy.groupPlans requires one."
+  },
+  "ported_from_programmer_2": [
+    "Selected-B-requires-matching-selected-A check (idea only; re-implemented in package-plan-validation.ts, not copied as a file).",
+    "Real validateExportManifestShape import into the external ZIP verifier, replacing a local Ajv schema compile.",
+    "Real compareUtf8 import into the external ZIP verifier, replacing a local Buffer.compare reimplementation.",
+    "On-disk extracted-file reconciliation split into an independent, testable module (scripts/zip-external-verification.mts)."
+  ],
+  "explicitly_not_ported_from_programmer_2": [
+    "The five-map ValidatedPackagePlanIndex (Programmer 1's wider, fully-reconciled index is kept and extended).",
+    "Mutable Maps typed as ReadonlyMap (Programmer 1's genuine runtime-immutable ReadonlyMapView is kept).",
+    "Raw .find()/.filter() content construction.",
+    "The less-strict ZIP writer (Programmer 1's strict property-descriptor-snapshot writer is kept unchanged).",
+    "The 11-row, partly-manual external verification command (the 13-row automatic structure is kept)."
+  ],
+  "architecture_note": "src/export/packaging/package-plan-validation.ts is the single typed validation boundary. package.ts calls validatePackagePlanIntegrity(plan, limits) once; buildPackageContentEntries, buildPromptMetadataJson, and buildValidationJson consume only the validated ValidatedPackagePlanIndex. Architecture tests (test/export-engine/packaging/architecture.test.ts) statically assert content.ts never imports the whole ExportPlan type, and that package.ts/package-plan.ts/manifest.ts never read a raw plan.selection.* category after the validation gate.",
+  "source_tree_combined_hash": {
+    "command": "node scripts/source-tree-hash.mjs",
+    "value": "06acf090216ad5f394edb87c937392821c2af0bfd93d14197e692875769cc736  408 files",
+    "note": "Computed from a clean `git archive` extraction of commit e466d29 (not the live working directory). The script excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt to avoid self-reference."
+  },
+  "test_evidence": {
+    "test_files": 128,
+    "tests_passed": 2493,
+    "tests_skipped": 0,
+    "tests_todo_or_only": 0,
+    "packaging_test_files": 12,
+    "packaging_tests_passed": 408,
+    "final_controlled_merge_acceptance_oracle_tests": 43,
+    "external_fixture_rows": 10,
+    "external_tamper_rows": 2,
+    "external_structural_rows": 1,
+    "external_verification_total_rows": 13
+  },
+  "gate_results": {
+    "npm_ci": "pass",
+    "npm_audit": "pass (0 vulnerabilities)",
+    "npm_audit_omit_dev": "pass (0 vulnerabilities)",
+    "npm_run_typecheck": "pass",
+    "npm_run_lint": "pass (0 warnings)",
+    "npm_run_format_check": "pass",
+    "npm_run_test": "pass (128 files / 2493 tests / 0 skipped)",
+    "npm_run_verify_determinism": "pass",
+    "npm_run_build": "pass",
+    "npm_run_verify": "pass",
+    "npm_run_verify_full": "pass",
+    "npm_run_verify_zip_external": "pass (13/13 rows)"
+  },
+  "docs_spec": {
+    "file_count": 12,
+    "byte_identity_against_programmer_1_starting_checkpoint": "12/12",
+    "modified": false
+  },
+  "used_force": false,
+  "tests_deleted": false,
+  "tests_weakened": false,
+  "coverage_weakened": false,
+  "batch_10_5_started": false,
+  "changed_files_this_merge": {
+    "added_source": ["src/export/packaging/package-plan-validation.ts"],
+    "modified_source": ["src/export/packaging/content.ts", "src/export/packaging/package-plan.ts"],
+    "added_scripts": ["scripts/zip-external-verification.mts"],
+    "modified_scripts": ["scripts/verify-golden-zips-external.mts (renamed from .mjs)"],
+    "added_tests": ["test/export-engine/packaging/final-controlled-merge-acceptance.test.ts"],
+    "modified_tests": [
+      "test/export-engine/packaging/architecture.test.ts",
+      "test/export-engine/packaging/consolidated-final-corrective.test.ts",
+      "test/export-engine/packaging/corrective-adversarial.test.ts",
+      "test/export-engine/packaging/scope-matrix.test.ts"
+    ],
+    "modified_config": ["package.json", "package-lock.json", "tsconfig.json"],
+    "modified_metadata": ["CHECKPOINT-MANIFEST.json", "CHECKSUMS.txt"]
+  }
+}

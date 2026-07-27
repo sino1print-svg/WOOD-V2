@@ -1,4 +1,5 @@
 {
+  "_archival_notice": "HISTORICAL — this is the Phase 7 Third Corrective release manifest, superseded by Phase 9 and Phase 10 work. It does not describe the current tree. Do not treat any field below as current status. See CHECKPOINT-MANIFEST.json at the repository root for the current Batch 10.4 First Corrective checkpoint metadata.",
   "package_name": "mockup-photoshoot-director-phase7-third-corrective-ready-for-independent-audit",
   "created_at_utc": "2026-07-25T19:11:05Z",
   "source_package": {

@@ -1,4 +1,5 @@
 {
+  "_archival_notice": "HISTORICAL — this is the Phase 9 release manifest, superseded by Phase 10 work. It does not describe the current tree. Do not treat any field below as current status. See CHECKPOINT-MANIFEST.json at the repository root for the current Batch 10.4 First Corrective checkpoint metadata.",
   "package": "mockup-photoshoot-director-phase9-final-completion",
   "phase": "Phase 9 — Scene Engine (Volume 08)",
   "status": "PHASE 09 — COMPLETE — VERIFIED — AUDIT PASSED — RELEASE READY",

@@ -1,3 +1,8 @@
+# HISTORICAL — this checksum listing predates Phase 10 (last regenerated for
+# the Phase 9 release). It does not include any Batch 10.1-10.4 files and
+# must not be used to verify the current tree. See CHECKPOINT-MANIFEST.json
+# and CHECKSUMS.txt at the repository root for the current Batch 10.4 First
+# Corrective checkpoint.
 ac86fac6bb8473ed69476c92b84a3d72128b2a1c1627b2088f7958a4020f43a9  .github/workflows/ci.yml
 16be14ee296b0ed282d1aa97804fa589c8504b9447e08dea0e551ea339bc3850  .gitignore
 9c579c4eab1d526e689fe7cda201a0ab2f39070304043bb55c459a3d90954250  .node-version

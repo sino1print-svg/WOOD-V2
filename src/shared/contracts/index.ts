@@ -3,4 +3,6 @@
  * TYPES (type-only; runtime mapping lives in src/export/format-mapping.ts).
  */
 export * from './engine-contracts';
+export * from './export-contracts';
+export * from './export-planning';
 export * from './export-refinements';

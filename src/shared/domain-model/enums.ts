@@ -274,4 +274,13 @@ export enum DomainEventType {
   CoverGenerated = 'cover_generated',
   ValidationCompleted = 'validation_completed',
   ProjectSaved = 'project_saved',
+  ExportStarted = 'export_started',
+  ExportCompleted = 'export_completed',
+  ExportFailed = 'export_failed',
+  BackupCreated = 'backup_created',
+  RestoreStarted = 'restore_started',
+  RestoreCompleted = 'restore_completed',
+  RestoreFailed = 'restore_failed',
+  ClipboardCopyCompleted = 'clipboard_copy_completed',
+  ClipboardCopyFailed = 'clipboard_copy_failed',
 }
