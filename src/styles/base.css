@@ -291,6 +291,14 @@ textarea {
   text-align: center;
   padding: 10px;
 }
+.number-control input {
+  width: 100%;
+  min-width: 0;
+}
+.number-control,
+.product-row > * {
+  min-width: 0;
+}
 .number-control button:first-child {
   border-radius: 9px 0 0 9px;
 }
