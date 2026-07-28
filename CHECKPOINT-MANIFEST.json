@@ -11,6 +11,11 @@
     "used_as_only_implementation_base": true
   },
   "integration_scope": "Wires the existing, approved engines into a runnable browser tool: real Generate through the Orchestrator (validation, rule, palette, print-area, Scene Engine planning, Prompt Engine composition), separate Output A / Output B results with independent copy, PNG artwork registration through the real Asset Store, and TXT/Markdown/readable JSON/canonical JSON export through the official Export Engine plan and formatters with real browser downloads. Phase 11 was not started; docs/spec is untouched.",
+  "audit_corrections": [
+    "IA-10.5-01 (Medium, closed): the inaccurate Node engine contract was corrected. package.json engines.node is now ^22.22.3 || ^24.15.0 || >=26.0.0 — the exact range the installed dependency tree supports (jsdom ^22.22.2 || ^24.15.0 || >=26.0.0; undici >=22.19.0). package-lock.json root engines were re-synced to match. .nvmrc and .node-version pin the single approved baseline 22.22.3; README documents it; CI installs it via node-version-file: .nvmrc; packageManager npm@10.9.8 is the npm bundled with Node 22.22.3. The archived Phase 7 manifest and Phase 7 report retain their historical >=20 declaration explicitly labelled as superseded. No claim that Node 20 is supported remains anywhere.",
+    "Audit documentation reconciliation: the completion report previously stated 216 packages for npm ci; the actual, reproduced figure is 241 added / 242 audited. All reports now state one authoritative environment (Node v22.22.3, npm 10.9.8) and one authoritative package count.",
+    "Delivery reports and SHA256SUMS.txt are shipped beside the package (permitted by the Phase 10.5 instruction section 13) rather than inside it, because a report that states the package SHA-256 cannot also be a member of the package it describes without creating a self-referential cycle."
+  ],
   "engine_integration_fixes": [
     "scene-engine/engine.ts: planned Output A garment now uses product.type, which the Prompt Engine's compose contract validates (proven cross-engine integration defect; no test weakened)."
   ],
@@ -18,8 +23,14 @@
   "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over every tracked file except node_modules/dist/coverage/.git/cache/logs and CHECKSUMS.txt itself)",
   "source_tree_combined_hash": {
     "command": "node scripts/source-tree-hash.mjs",
-    "value": "2a317b4a65698c4bff0d58d45255e58ebf9707b519388e25278965e5915e5c63  423 files",
+    "value": "4d82d8d3529998330bd5304174d7c3e9b239f009e3540ba0cea00fc23e66264b  423 files",
     "note": "Excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt by exact path to avoid self-referential cycles."
+  },
+  "environment": {
+    "node": "v22.22.3",
+    "npm": "10.9.8",
+    "npm_ci_result": "added 241 packages, and audited 242 packages; 0 vulnerabilities; 0 EBADENGINE warnings",
+    "pinned_by": ".nvmrc and .node-version (22.22.3)"
   },
   "verification": "npm ci, npm audit, npm audit --omit=dev, typecheck, lint, format:check, test (137 files / 2626 tests), verify:determinism, build, verify, verify:full, and verify:zip:external all exit 0; the §11 manual smoke scenario passed in real Chromium against both `npm run dev` and `npm run build && npm run preview` with zero console errors."
 }

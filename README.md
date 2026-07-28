@@ -59,6 +59,13 @@ docs/PHASE7_COVER_ENGINE.md      implementation boundary and traceability
 docs/spec/                      immutable authoritative specifications
 ```
 
+## Requirements
+
+- Node.js **22.22.3** — the single approved baseline, pinned in `.nvmrc` and `.node-version`; CI installs it via `node-version-file: .nvmrc`.
+- npm **10.9.8** (bundled with Node 22.22.3; also declared in `package.json` `packageManager`).
+- `package.json` `engines.node` is `^22.22.3 || ^24.15.0 || >=26.0.0` — the exact range the installed dependency
+  tree supports (`jsdom` requires `^22.22.2 || ^24.15.0 || >=26.0.0`, `undici` requires `>=22.19.0`). Node 20 is **not** supported.
+
 ## Verification
 
 ```bash

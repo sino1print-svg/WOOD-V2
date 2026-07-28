@@ -14,7 +14,8 @@
   "environment": {
     "node_used": "v22.22.2",
     "npm_used": "10.9.7",
-    "node_required": ">=20",
+    "node_required_at_time_of_this_archive": ">=20",
+    "node_required_superseded_note": "Superseded in Phase 10.5 (audit finding IA-10.5-01): engines.node is now ^22.22.3 || ^24.15.0 || >=26.0.0. Node 20 is not supported by the current dependency tree. This archived field records only the historical Phase 7 declaration.",
     "node_pinned": "22.22.3",
     "npm_pinned_package_manager": "npm@10.9.8"
   },

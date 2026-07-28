@@ -2,7 +2,9 @@
 
 **Package:** `mockup-photoshoot-director-phase7-third-corrective-ready-for-independent-audit.zip`
 **Source package:** `third-corrective-final.zip` (SHA-256 `f53b3c38ecb1a3d1b45e5ccf7f2b80bacc1f199213d777b9e8bb43fcee03aa5f`, verified on receipt)
-**Environment:** Node v22.22.2, npm 10.9.7 (project requires Node >=20; `.node-version` / `.nvmrc` pin 22.22.3)
+**Environment:** Node v22.22.2, npm 10.9.7 (`.node-version` / `.nvmrc` pinned 22.22.3). The `engines.node` field read
+`>=20` when this Phase 7 report was written; that declaration was superseded in Phase 10.5 by the dependency-accurate
+`^22.22.3 || ^24.15.0 || >=26.0.0` (audit finding IA-10.5-01). Node 20 is not supported by the current dependency tree.
 
 ## 1. Decision
 
