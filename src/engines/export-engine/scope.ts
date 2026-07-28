@@ -300,7 +300,7 @@ export function resolveExportScope(
       [group.id],
       sceneIds,
       ids.outputAIds,
-      ids.outputBIds,
+      scope.scopeDetail === 'group_a' ? [] : ids.outputBIds,
       [],
       [],
       groupPolicy,
@@ -323,7 +323,7 @@ export function resolveExportScope(
       [],
       [...session.sceneOrder],
       ids.outputAIds,
-      ids.outputBIds,
+      [],
       [session.cover.id],
       [],
       contentPolicy({ cover: true }),
@@ -334,24 +334,42 @@ export function resolveExportScope(
     if (scope.baseScope !== ExportScope.Session) return failed('EXPORT_SCOPE_001', 'scope');
     const session = getSession(project, scope.sessionId);
     if (!session) return failed('EXPORT_SCOPE_001', 'scope.sessionId');
+    if (scope.scopeDetail === 'execution_plan') {
+      if (session.sceneOrder.length === 0) {
+        return failed('EXPORT_SCOPE_002', `source.project.sessions.${session.id}.sceneOrder`);
+      }
+      const sessionIds = [session.id];
+      const sceneIds = [...session.sceneOrder];
+      const ids = collectEntityIds(project, sessionIds, sceneIds);
+      return resolved(
+        project,
+        scope,
+        sessionIds,
+        [],
+        sceneIds,
+        ids.outputAIds,
+        ids.outputBIds,
+        [],
+        [],
+        contentPolicy({ executionPlans: true }),
+      );
+    }
     return resolveOneSession(
       project,
       scope,
       session,
-      scope.scopeDetail === 'execution_plan'
-        ? contentPolicy({ executionPlans: true })
-        : contentPolicy({
-            sessionMetadata: true,
-            sceneMetadata: true,
-            outputA: true,
-            outputB: true,
-            groupMetadata: true,
-            groupPlans: true,
-            executionPlans: true,
-            cover: true,
-            artworkMetadata: true,
-            validationResults: true,
-          }),
+      contentPolicy({
+        sessionMetadata: true,
+        sceneMetadata: true,
+        outputA: true,
+        outputB: true,
+        groupMetadata: true,
+        groupPlans: true,
+        executionPlans: true,
+        cover: true,
+        artworkMetadata: true,
+        validationResults: true,
+      }),
     );
   }
 

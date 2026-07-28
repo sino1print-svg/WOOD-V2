@@ -11,6 +11,12 @@
  * - F5: manifest.json sourceFingerprints now carry the real source
  *   session/scene/cover hashes (plan.provenance) instead of a projectId
  *   fallback hash, changing every case's manifest/checksums/ZIP bytes.
+ *
+ * Updated for the Batch 10.4 Final Residual Corrective:
+ * - F1/F2: the cover scope no longer records Output B as a resolved
+ *   dependency.
+ * - F3: partial/no-cover session summaries use derived canonical generation
+ *   counters and flags instead of stale raw session metadata.
  */
 import type { GoldenZipCaseName } from './golden-fixtures';
 
@@ -502,13 +508,13 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
         path: 'project-001/checksums.sha256',
         kind: 'checksums',
         byteLength: 964,
-        sha256: '96624983a193862004cb5acd5b0d8d1995327176f66bc99ed0be02c545888127',
+        sha256: '06a068b1813e3ce27f88661e489b74f7a74958fc224e06e9191966d830473f07',
       },
       {
         path: 'project-001/manifest.json',
         kind: 'manifest',
         byteLength: 3193,
-        sha256: '6c22c4dd58c4829347f223ac17ae8e1c359f9807d34ca682abe72fe2ce547b65',
+        sha256: '884338cfb71da3a39810b135d49a3fe5701f60843812edf1452e2e24c7eccf78',
       },
       {
         path: 'project-001/session-01/cover/cover-metadata.json',
@@ -556,14 +562,14 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
         path: 'project-001/session-01/session-summary.md',
         kind: 'session_summary',
         byteLength: 240,
-        sha256: '3dad79ff61e2fbf5e1f33d8cbfadd83aa0dd7614f7a712679b757bbb071499a4',
+        sha256: '9d27a27c4fe06a7aeb0f6ef279db80572a6085fa410145a6402f23e00493f894',
       },
     ],
-    manifestSha256: '6c22c4dd58c4829347f223ac17ae8e1c359f9807d34ca682abe72fe2ce547b65',
+    manifestSha256: '884338cfb71da3a39810b135d49a3fe5701f60843812edf1452e2e24c7eccf78',
     manifestByteLength: 3193,
-    checksumsSha256: '96624983a193862004cb5acd5b0d8d1995327176f66bc99ed0be02c545888127',
+    checksumsSha256: '06a068b1813e3ce27f88661e489b74f7a74958fc224e06e9191966d830473f07',
     checksumsByteLength: 964,
-    zipSha256: 'ace913efc83f6c5c2794edddb9e5f224ec4cbc5c4dcd225847dcd93b445a8209',
+    zipSha256: 'c6a2da2f534ce270210f102a6fd1d8f4b4056fb8c1f1025bc7fe94ca094eb414',
     zipByteLength: 10075,
   },
   'cover-included': {
@@ -571,20 +577,20 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
       {
         path: 'project-001/README.md',
         kind: 'readme',
-        byteLength: 477,
-        sha256: '8061fb7633763507e17fc65e5931ace85180198557a30b28f89e3b54cf0b80bf',
+        byteLength: 450,
+        sha256: '5deab861003fefecdddc35ede422718d313c4d182b214822830d5cbfeecd516d',
       },
       {
         path: 'project-001/checksums.sha256',
         kind: 'checksums',
         byteLength: 568,
-        sha256: '3fabb95dab73379eccaca573f50e29e5b0dcda8cc58f1150914ae75693a09ef0',
+        sha256: '2df9852cbd8d66c21f4864040af1902434ff90540a18c89c5d8319178d05fe97',
       },
       {
         path: 'project-001/manifest.json',
         kind: 'manifest',
         byteLength: 2211,
-        sha256: '9e8d4fa22c5098365abc22e5ffa9560904ee475f05ba530810ec3c99960909ec',
+        sha256: 'a572df11f92f378b2af28f53b01a90da08ccad2ea1736b85a4fb654f3962d10a',
       },
       {
         path: 'project-001/session-01/cover/cover-metadata.json',
@@ -611,12 +617,12 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
         sha256: '7a8398f8838de5277f190204f7fc7a96eb978f7796a4bd02b0ce4740e42661c3',
       },
     ],
-    manifestSha256: '9e8d4fa22c5098365abc22e5ffa9560904ee475f05ba530810ec3c99960909ec',
+    manifestSha256: 'a572df11f92f378b2af28f53b01a90da08ccad2ea1736b85a4fb654f3962d10a',
     manifestByteLength: 2211,
-    checksumsSha256: '3fabb95dab73379eccaca573f50e29e5b0dcda8cc58f1150914ae75693a09ef0',
+    checksumsSha256: '2df9852cbd8d66c21f4864040af1902434ff90540a18c89c5d8319178d05fe97',
     checksumsByteLength: 568,
-    zipSha256: 'faa893730f771ed911c14bc23c70d67158f40c7131856e865cfca456ed961112',
-    zipByteLength: 5544,
+    zipSha256: '7b0559cdbfd978a13cb381d361dd30dff4a1ab3f2638e1092787b027a5d2dc72',
+    zipByteLength: 5517,
   },
   'no-cover': {
     entries: [
@@ -636,13 +642,13 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
         path: 'project-001/checksums.sha256',
         kind: 'checksums',
         byteLength: 1094,
-        sha256: 'a6f03f895b588b4b171f742821a817e15ee97c80492b000ec7ee6c41af3789ec',
+        sha256: '30ba3c047aa13573887fcd8c7666d9d788aade4a8c476cb13e3c4fec5ffc49bb',
       },
       {
         path: 'project-001/manifest.json',
         kind: 'manifest',
         byteLength: 3443,
-        sha256: '1c7d4fe0396fcf55e0e4e96a47e88bcb3a0a10f11311a3c0a202d8bed47f5966',
+        sha256: '657a7f98e41dd697b95c4599829c8059bfbe9ad94d66b79ec5019a33d798a4e4',
       },
       {
         path: 'project-001/session-01/execution-plan.txt',
@@ -689,16 +695,16 @@ export const GOLDEN_ZIP_DIGESTS: Readonly<Record<GoldenZipCaseName, GoldenZipDig
       {
         path: 'project-001/session-01/session-summary.md',
         kind: 'session_summary',
-        byteLength: 240,
-        sha256: '3dad79ff61e2fbf5e1f33d8cbfadd83aa0dd7614f7a712679b757bbb071499a4',
+        byteLength: 241,
+        sha256: '450d29778703a962a2b26f04cc5231b5f87849056d0a4bcef646cb0ccc29245f',
       },
     ],
-    manifestSha256: '1c7d4fe0396fcf55e0e4e96a47e88bcb3a0a10f11311a3c0a202d8bed47f5966',
+    manifestSha256: '657a7f98e41dd697b95c4599829c8059bfbe9ad94d66b79ec5019a33d798a4e4',
     manifestByteLength: 3443,
-    checksumsSha256: 'a6f03f895b588b4b171f742821a817e15ee97c80492b000ec7ee6c41af3789ec',
+    checksumsSha256: '30ba3c047aa13573887fcd8c7666d9d788aade4a8c476cb13e3c4fec5ffc49bb',
     checksumsByteLength: 1094,
-    zipSha256: 'f33b0df8d54093491ec92a9e700034cf33a22a15af61dee90d8939fcbb040f8d',
-    zipByteLength: 10582,
+    zipSha256: 'ed2bf5031822a2af4299aaa7b294ba6ebee91fe6cade55b96ce4a40090b4abe2',
+    zipByteLength: 10583,
   },
   'markdown-long-backtick-runs': {
     entries: [

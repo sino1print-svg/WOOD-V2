@@ -15,7 +15,9 @@ type GoldenDigestManifest = Readonly<
 
 /**
  * Manually reviewed byte oracles. There is deliberately no update command or
- * write path in the test suite.
+ * write path in the test suite. The Batch 10.4 Final Residual Corrective
+ * updates only fixtures whose trusted session counters or cover-scope
+ * dependency projection changed.
  */
 export const GOLDEN_DIGESTS = {
   'simple-session-a-only': {
@@ -28,12 +30,12 @@ export const GOLDEN_DIGESTS = {
       sha256: '9c86bd383b996de2e8fefd2ce95e5f524aae9b963098532878460426d1aff0dc',
     },
     readableJson: {
-      byteLength: 8728,
-      sha256: 'be2e11f3181936702d0aa72ee25e2e2843084a4fe7b0e366c3733d72a862d954',
+      byteLength: 8729,
+      sha256: '8ed68a9ad8165dde1252d2df4b5a46a9b0d254b555094ad07c37e75b19f26d19',
     },
     canonicalJson: {
-      byteLength: 6042,
-      sha256: '1712514f722a619b75698ad4bc4f0fc1bdb61672d85dfad098e9ca4171bc7db9',
+      byteLength: 6043,
+      sha256: 'cc835dc2d3bad57b8dcef58160e9b02044b4950a75b12325284a08967f603f61',
     },
   },
   'scene-a-and-b': {
@@ -92,20 +94,20 @@ export const GOLDEN_DIGESTS = {
   },
   'cover-present': {
     txt: {
-      byteLength: 560,
-      sha256: '51cd11d72a2cc5c1634885d02ee76dc5ecd65f183a75de583d90f4578762c73d',
+      byteLength: 534,
+      sha256: 'c5064a22f39f6ebad16f834dba16937f692d0652baaf7ab8987a0be060e9c8ff',
     },
     markdown: {
-      byteLength: 477,
-      sha256: '8061fb7633763507e17fc65e5931ace85180198557a30b28f89e3b54cf0b80bf',
+      byteLength: 450,
+      sha256: '5deab861003fefecdddc35ede422718d313c4d182b214822830d5cbfeecd516d',
     },
     readableJson: {
-      byteLength: 3373,
-      sha256: 'c5766aa1fef96d85f48093c40cf830ce0e6e46c92988d5c83eabd2c0993089c7',
+      byteLength: 3268,
+      sha256: 'b4c87e93d05755513991c10ebd52cac817e12f2b6803c54c23836ac69eba4c09',
     },
     canonicalJson: {
-      byteLength: 2288,
-      sha256: 'a7a3b3ee05f40fe3e5293b8975ecf3fafffeff2a3bd2d041032e3d739fbe2e31',
+      byteLength: 2215,
+      sha256: '82cfb779b5ca20ef5589e4d62c3aa61b72678b94fc4732b53299e94690fc2f1f',
     },
   },
   'partial-with-omission': {
@@ -119,11 +121,11 @@ export const GOLDEN_DIGESTS = {
     },
     readableJson: {
       byteLength: 8734,
-      sha256: '6ed88dcadb3282c9f897643173f6afb4c70d98a9736a4758248ec0bd974185c7',
+      sha256: '954c0c0ae5aeba145931de8c20afadcc4a3edb26481eb93cee0bf46097c614d1',
     },
     canonicalJson: {
       byteLength: 5888,
-      sha256: 'd81c1027ad99eba422536bfb8a5712c4407f51b81ae89df04dd60d5d2d4e4e59',
+      sha256: '5efa97d48f76e55077b14ec6401f42149c04eece85368564d376c662e5216a99',
     },
   },
   'arabic-text': {

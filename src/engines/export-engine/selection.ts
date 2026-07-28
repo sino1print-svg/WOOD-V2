@@ -1,16 +1,17 @@
-import type {
-  MainCover,
-  OutputA,
-  OutputB,
-  PhotoshootSession,
-  Project,
-  PromptMetadata,
-  Scene,
-  SessionId,
-  Sha256,
-  ValidationResult,
-  ValidationResultId,
-  VersionSnapshot,
+import {
+  OutputStatus,
+  type MainCover,
+  type OutputA,
+  type OutputB,
+  type PhotoshootSession,
+  type Project,
+  type PromptMetadata,
+  type Scene,
+  type SessionId,
+  type Sha256,
+  type ValidationResult,
+  type ValidationResultId,
+  type VersionSnapshot,
 } from '../../shared/domain-model';
 import type { ExportSourceSnapshot } from '../../shared/contracts/export-contracts';
 import { canonicalGroups, canonicalScenes, canonicalSessions } from './ordering';
@@ -81,7 +82,28 @@ function selectProject(project: Project): ExportSelectedProject {
   };
 }
 
-function selectSession(session: PhotoshootSession): ExportSelectedSession {
+function selectSession(
+  session: PhotoshootSession,
+  eligibility: ExportEligibility,
+): ExportSelectedSession {
+  const scenes = session.sceneOrder.flatMap((sceneId) => {
+    const scene = session.scenes[sceneId];
+    return scene === undefined ? [] : [scene];
+  });
+  const totalScenes = scenes.length;
+  const outputAGenerated = scenes.filter(
+    (scene) =>
+      scene.outputA.status === OutputStatus.Generated &&
+      eligibility.validOutputAIds.has(scene.outputA.id),
+  ).length;
+  const outputBGenerated = scenes.filter(
+    (scene) =>
+      scene.outputB?.status === OutputStatus.Generated &&
+      eligibility.validOutputBIds.has(scene.outputB.id),
+  ).length;
+  const coverGenerated =
+    session.cover?.status === OutputStatus.Generated &&
+    eligibility.validCoverIds.has(session.cover.id);
   return {
     id: session.id,
     projectId: session.projectId,
@@ -98,16 +120,16 @@ function selectSession(session: PhotoshootSession): ExportSelectedSession {
         ? {}
         : { paletteId: session.colorSelection.paletteId }),
     },
-    requestedSceneCount: session.requestedSceneCount,
+    requestedSceneCount: totalScenes,
     sceneIds: [...session.sceneOrder],
     status: session.status,
     validationResultIds: Object.keys(session.validationResults).sort(compareUtf8),
     generationProgress: {
-      totalScenes: session.generationProgress.totalScenes,
-      outputAGenerated: session.generationProgress.outputAGenerated,
-      outputBGenerated: session.generationProgress.outputBGenerated,
-      coverGenerated: session.generationProgress.coverGenerated,
-      allOutputAReady: session.generationProgress.allOutputAReady,
+      totalScenes,
+      outputAGenerated,
+      outputBGenerated,
+      coverGenerated,
+      allOutputAReady: totalScenes > 0 && outputAGenerated === totalScenes,
     },
     fingerprint: {
       hash: session.fingerprint.hash,
@@ -394,7 +416,7 @@ export function selectExportArtifacts(
 
   for (const session of sessions) {
     if (resolved.policy.sessionMetadata) {
-      selectedSessions.push(selectSession(session));
+      selectedSessions.push(selectSession(session, eligibility));
       ordered.push({ kind: 'session', entityId: session.id, sessionId: session.id });
     }
 
@@ -632,7 +654,11 @@ export function computeExportProvenance(
     }
   }
 
-  const requestedCoverIds = new Set<string>(resolved.coverIds);
+  const requestedCoverIds = new Set<string>(
+    resolved.scopeDetail === 'execution_plan'
+      ? sessions.flatMap((session) => (session.cover === null ? [] : [session.cover.id]))
+      : resolved.coverIds,
+  );
   let coverHash: Sha256 | null = null;
   for (const session of sessions) {
     if (session.cover !== null && requestedCoverIds.has(session.cover.id)) {

@@ -835,6 +835,17 @@ function coverIssue(
   ) {
     return 'EXPORT_COVER_001';
   }
+  const expectedOutputAIds = session.sceneOrder.flatMap((sceneId) => {
+    const outputAId = session.scenes[sceneId]?.outputA.id;
+    return outputAId !== undefined && validOutputAIds.has(outputAId) ? [outputAId] : [];
+  });
+  const actualOutputAIds = new Set<string>(cover.sourceSaleImageIds);
+  if (
+    cover.sourceSaleImageIds.length !== expectedOutputAIds.length ||
+    expectedOutputAIds.some((outputAId) => !actualOutputAIds.has(outputAId))
+  ) {
+    return 'EXPORT_COVER_001';
+  }
   if (
     cover.sourceSaleImageIds.length === 0 ||
     cover.readMetadata.mockupCount !== cover.sourceSaleImageIds.length

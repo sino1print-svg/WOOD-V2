@@ -28,7 +28,11 @@ import { sha256Bytes } from './checksum';
 import { isValidCreatedAt, isValidExportEngineVersions, isValidExportId } from './input-validation';
 import { buildExportManifest, serializeManifest } from './manifest';
 import type { PackageEntry } from './package-entry';
-import { buildPackageContentEntries, validatePackagePlanIntegrity } from './package-plan';
+import {
+  buildPackageContentEntries,
+  preciseScopeKindFieldFailure,
+  validatePackagePlanIntegrity,
+} from './package-plan';
 import type {
   ExportPackageInput,
   ExportPackageResult,
@@ -201,6 +205,15 @@ function packageExportInternal(
     knownWarnings = warnings;
     knownOmissions = plan.omissions;
     hooks.afterPlanPrepared?.();
+
+    const scopeKindField = preciseScopeKindFieldFailure(plan);
+    if (scopeKindField) {
+      return failureResult(
+        [registeredExportFailure('EXPORT_SCOPE_001', scopeKindField)!],
+        warnings,
+        plan.omissions,
+      );
+    }
 
     // Batch 10.4 packaging never implements backup or Prompt Pack behavior; a plan
     // resolved against either scope must fail closed before any content is built.

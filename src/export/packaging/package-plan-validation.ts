@@ -9,6 +9,7 @@
  */
 import {
   ExportScope,
+  OutputStatus,
   type GroupId,
   type SceneId,
   type SessionId,
@@ -19,6 +20,7 @@ import type {
   ExportNumberingEntry,
   ExportPlan,
   ExportPlanOmission,
+  ExportResolvedScope,
   ExportScopeContentPolicy,
   ExportSelectedGroup,
   ExportSelectedOutputA,
@@ -294,6 +296,89 @@ const POLICY_KEYS = [
   'versionMetadata',
   'backupResolutionOnly',
 ] as const satisfies readonly (keyof ExportScopeContentPolicy)[];
+
+const SCOPE_ARRAY_FIELDS = [
+  'sessionIds',
+  'groupIds',
+  'sceneIds',
+  'outputAIds',
+  'outputBIds',
+  'coverIds',
+  'versionIds',
+] as const satisfies readonly (keyof Pick<
+  ExportResolvedScope,
+  'sessionIds' | 'groupIds' | 'sceneIds' | 'outputAIds' | 'outputBIds' | 'coverIds' | 'versionIds'
+>)[];
+
+type ScopeArrayField = (typeof SCOPE_ARRAY_FIELDS)[number];
+
+const scopeFields = (...fields: readonly ScopeArrayField[]): ReadonlySet<ScopeArrayField> =>
+  new Set(fields);
+
+/**
+ * Closed-world resolved-scope field matrix. A field may exist as the contract's
+ * required empty array, but only the fields listed for a scope kind may carry
+ * identities. The order of SCOPE_ARRAY_FIELDS freezes failure precedence.
+ */
+const ALLOWED_SCOPE_FIELDS: Readonly<
+  Record<ExportResolvedScope['scopeDetail'], ReadonlySet<ScopeArrayField>>
+> = Object.freeze({
+  output_a: scopeFields('sessionIds', 'sceneIds', 'outputAIds'),
+  output_b: scopeFields('sessionIds', 'sceneIds', 'outputAIds', 'outputBIds'),
+  pair: scopeFields('sessionIds', 'sceneIds', 'outputAIds', 'outputBIds'),
+  group_a: scopeFields('sessionIds', 'groupIds', 'sceneIds', 'outputAIds'),
+  group_b: scopeFields('sessionIds', 'groupIds', 'sceneIds', 'outputAIds', 'outputBIds'),
+  group: scopeFields('sessionIds', 'groupIds', 'sceneIds', 'outputAIds', 'outputBIds'),
+  cover: scopeFields('sessionIds', 'sceneIds', 'outputAIds', 'coverIds'),
+  execution_plan: scopeFields('sessionIds', 'sceneIds', 'outputAIds', 'outputBIds'),
+  session: scopeFields(
+    'sessionIds',
+    'groupIds',
+    'sceneIds',
+    'outputAIds',
+    'outputBIds',
+    'coverIds',
+  ),
+  complete_project: scopeFields(
+    'sessionIds',
+    'groupIds',
+    'sceneIds',
+    'outputAIds',
+    'outputBIds',
+    'coverIds',
+  ),
+  all: scopeFields('sessionIds', 'groupIds', 'sceneIds', 'outputAIds', 'outputBIds', 'coverIds'),
+  version_snapshot: scopeFields('versionIds'),
+  backup: scopeFields(
+    'sessionIds',
+    'groupIds',
+    'sceneIds',
+    'outputAIds',
+    'outputBIds',
+    'coverIds',
+    'versionIds',
+  ),
+  prompt_pack: scopeFields(
+    'sessionIds',
+    'groupIds',
+    'sceneIds',
+    'outputAIds',
+    'outputBIds',
+    'coverIds',
+  ),
+});
+
+/** Returns the first exact illegal non-empty resolved-scope field, if any. */
+export function preciseScopeKindFieldFailure(plan: ExportPlan): string | null {
+  const allowedFields = ALLOWED_SCOPE_FIELDS[plan.scope.scopeDetail];
+  if (allowedFields === undefined) return 'packaging.scope.scopeDetail';
+  for (const field of SCOPE_ARRAY_FIELDS) {
+    const value = plan.scope[field];
+    if (!Array.isArray(value)) return `packaging.scope.${field}`;
+    if (!allowedFields.has(field) && value.length > 0) return `packaging.scope.${field}`;
+  }
+  return null;
+}
 
 function expectedScopePolicy(plan: ExportPlan): ExportScopeContentPolicy | null {
   const enabled = (values: Partial<ExportScopeContentPolicy>): ExportScopeContentPolicy => ({
@@ -602,7 +687,7 @@ function validateNumbering(
 
   const outputAIds = plan.numbering.map((entry) => entry.outputAId);
   if (!arraysEqual(outputAIds, plan.scope.outputAIds)) return null;
-  if (plan.scope.scopeDetail !== 'output_a') {
+  if (ALLOWED_SCOPE_FIELDS[plan.scope.scopeDetail].has('outputBIds')) {
     const outputBIds = plan.numbering.flatMap((entry) =>
       entry.outputBId === undefined ? [] : [entry.outputBId],
     );
@@ -1257,35 +1342,138 @@ function validateExecutionPlans(
   return result;
 }
 
+interface CoverValidationSuccess {
+  readonly ok: true;
+  readonly covers: Map<SessionId, SelectedCover>;
+  readonly canonicalCovers: readonly SelectedCover[];
+}
+
+interface CoverValidationFailure {
+  readonly ok: false;
+  readonly code: 'EXPORT_COVER_001' | 'EXPORT_COVERCOUNT_001';
+  readonly field: string;
+}
+
+type CoverValidation = CoverValidationSuccess | CoverValidationFailure;
+
+function coverFailure(code: CoverValidationFailure['code'], field: string): CoverValidationFailure {
+  return { ok: false, code, field };
+}
+
+function canonicalCover(
+  cover: SelectedCover,
+  sourceOutputAIds: SelectedCover['sourceOutputAIds'],
+  sourceOutputALabels: SelectedCover['sourceOutputALabels'],
+): SelectedCover {
+  return Object.freeze({
+    id: cover.id,
+    sessionId: cover.sessionId,
+    sourceOutputAIds: Object.freeze([...sourceOutputAIds]),
+    sourceOutputALabels: Object.freeze([...sourceOutputALabels]),
+    layout: cover.layout,
+    metadata: cover.metadata,
+    status: cover.status,
+    promptText: cover.promptText,
+    generatedAt: cover.generatedAt,
+    promptHash: cover.promptHash,
+    renderHash: cover.renderHash,
+    coverHash: cover.coverHash,
+    promptMeta: cover.promptMeta,
+  });
+}
+
 function validateCovers(
   plan: ExportPlan,
   numbering: Map<SessionId, ExportNumberingEntry[]>,
-): Map<SessionId, SelectedCover> | null {
+): CoverValidation {
   if (!plan.scope.policy.cover) {
-    return plan.selection.covers.length === 0 &&
-      !plan.omissions.some((omission) => omission.artifactKind === 'cover')
-      ? new Map()
-      : null;
+    if (
+      plan.selection.covers.length !== 0 ||
+      plan.omissions.some((omission) => omission.artifactKind === 'cover')
+    ) {
+      return coverFailure('EXPORT_COVER_001', 'packaging.selection.covers');
+    }
+    return { ok: true, covers: new Map(), canonicalCovers: Object.freeze([]) };
   }
 
   const result = new Map<SessionId, SelectedCover>();
-  for (const cover of plan.selection.covers) {
-    if (
-      !plan.scope.sessionIds.includes(cover.sessionId) ||
-      result.has(cover.sessionId) ||
-      cover.sourceOutputAIds.length !== cover.sourceOutputALabels.length ||
-      cover.metadata.mockupCount !== cover.sourceOutputAIds.length ||
-      hasDuplicates(cover.sourceOutputAIds)
-    ) {
-      return null;
+  const canonicalCovers: SelectedCover[] = [];
+  for (let coverIndex = 0; coverIndex < plan.selection.covers.length; coverIndex += 1) {
+    const cover = plan.selection.covers[coverIndex]!;
+    const field = `packaging.selection.covers.${coverIndex}`;
+    if (!plan.scope.sessionIds.includes(cover.sessionId) || result.has(cover.sessionId)) {
+      return coverFailure('EXPORT_COVER_001', field);
     }
+
     const rows = numbering.get(cover.sessionId) ?? [];
-    for (let index = 0; index < cover.sourceOutputAIds.length; index += 1) {
-      const outputAId = cover.sourceOutputAIds[index]!;
-      const row = rows.find((candidate) => candidate.outputAId === outputAId);
-      if (!row || cover.sourceOutputALabels[index] !== row.outputALabel) return null;
+    let normalizedCover = cover;
+    if (cover.status === OutputStatus.Generated) {
+      if (cover.generatedAt === null) {
+        return coverFailure('EXPORT_COVER_001', `${field}.generatedAt`);
+      }
+      if (cover.sourceOutputAIds.length === 0) {
+        return coverFailure('EXPORT_COVERCOUNT_001', `${field}.sourceOutputAIds`);
+      }
+      if (cover.sourceOutputAIds.length !== cover.sourceOutputALabels.length) {
+        return coverFailure('EXPORT_COVERCOUNT_001', `${field}.sourceOutputALabels`);
+      }
+      if (cover.metadata.mockupCount !== cover.sourceOutputAIds.length) {
+        return coverFailure('EXPORT_COVERCOUNT_001', `${field}.metadata.mockupCount`);
+      }
+      if (hasDuplicates(cover.sourceOutputAIds)) {
+        return coverFailure('EXPORT_COVER_001', `${field}.sourceOutputAIds`);
+      }
+      if (hasDuplicates(cover.sourceOutputALabels)) {
+        return coverFailure('EXPORT_COVER_001', `${field}.sourceOutputALabels`);
+      }
+
+      const rowByOutputAId = new Map(rows.map((row) => [row.outputAId, row]));
+      for (let sourceIndex = 0; sourceIndex < cover.sourceOutputAIds.length; sourceIndex += 1) {
+        const outputAId = cover.sourceOutputAIds[sourceIndex]!;
+        const row = rowByOutputAId.get(outputAId);
+        if (!row) {
+          return coverFailure(
+            'EXPORT_COVER_001',
+            plan.scope.scopeDetail === 'complete_project'
+              ? 'packaging.selection.covers'
+              : `${field}.sourceOutputAIds`,
+          );
+        }
+        if (cover.sourceOutputALabels[sourceIndex] !== row.outputALabel) {
+          return coverFailure(
+            'EXPORT_COVER_001',
+            plan.scope.scopeDetail === 'complete_project'
+              ? 'packaging.selection.covers'
+              : `${field}.sourceOutputALabels`,
+          );
+        }
+      }
+
+      const expectedIds = rows.map((row) => row.outputAId);
+      const expectedLabels = rows.map((row) => row.outputALabel);
+      const actualIds = new Set(cover.sourceOutputAIds);
+      if (
+        expectedIds.length === 0 ||
+        cover.sourceOutputAIds.length !== expectedIds.length ||
+        expectedIds.some((outputAId) => !actualIds.has(outputAId))
+      ) {
+        return coverFailure('EXPORT_COVER_001', `${field}.sourceOutputAIds`);
+      }
+      normalizedCover = canonicalCover(cover, expectedIds, expectedLabels);
+    } else {
+      if (cover.sourceOutputAIds.length !== cover.sourceOutputALabels.length) {
+        return coverFailure('EXPORT_COVERCOUNT_001', `${field}.sourceOutputALabels`);
+      }
+      if (cover.metadata.mockupCount !== cover.sourceOutputAIds.length) {
+        return coverFailure('EXPORT_COVERCOUNT_001', `${field}.metadata.mockupCount`);
+      }
+      if (hasDuplicates(cover.sourceOutputAIds)) {
+        return coverFailure('EXPORT_COVER_001', `${field}.sourceOutputAIds`);
+      }
     }
-    result.set(cover.sessionId, cover);
+
+    result.set(cover.sessionId, normalizedCover);
+    canonicalCovers.push(normalizedCover);
   }
   const selectedSessionOrder = plan.scope.sessionIds.filter((sessionId) => result.has(sessionId));
   const expectedCoverIds = plan.scope.coverIds.filter(
@@ -1307,7 +1495,7 @@ function validateCovers(
       expectedCoverIds,
     )
   ) {
-    return null;
+    return coverFailure('EXPORT_COVER_001', 'packaging.selection.covers');
   }
   for (const sessionId of plan.scope.sessionIds) {
     const selected = result.get(sessionId);
@@ -1316,7 +1504,9 @@ function validateCovers(
       (omission) => omission.artifactKind === 'cover' && omission.field === field,
     );
     if (selected !== undefined) {
-      if (matchingOmissions.length !== 0) return null;
+      if (matchingOmissions.length !== 0) {
+        return coverFailure('EXPORT_COVER_001', 'packaging.selection.covers');
+      }
       continue;
     }
     if (
@@ -1325,7 +1515,7 @@ function validateCovers(
       (!plan.scope.coverIds.some((coverId) => coverId === matchingOmissions[0]!.entityId) &&
         matchingOmissions[0]!.entityId !== `${sessionId}:cover`)
     ) {
-      return null;
+      return coverFailure('EXPORT_COVER_001', 'packaging.selection.covers');
     }
   }
   const coverOmissions = plan.omissions.filter((omission) => omission.artifactKind === 'cover');
@@ -1337,9 +1527,106 @@ function validateCovers(
         ),
     )
   ) {
-    return null;
+    return coverFailure('EXPORT_COVER_001', 'packaging.selection.covers');
   }
-  return result;
+  return { ok: true, covers: result, canonicalCovers: Object.freeze(canonicalCovers) };
+}
+
+interface SessionMetadataFailure {
+  readonly code: 'EXPORT_NUM_001' | 'EXPORT_COVER_001' | 'EXPORT_MISSINGA_001';
+  readonly field: string;
+}
+
+/**
+ * Reconcile every persisted session counter/flag with the already-validated
+ * session entities. Raw session metadata is never accepted as its own proof.
+ */
+function preciseSessionMetadataFailure(
+  sessions: Map<SessionId, ExportSelectedSession>,
+  scenes: Map<SessionId, Map<SceneId, SelectedScene>>,
+  outputsA: Map<SessionId, ExportSelectedOutputA[]>,
+  outputsB: Map<SessionId, ExportSelectedOutputB[]>,
+  covers: Map<SessionId, SelectedCover>,
+): SessionMetadataFailure | null {
+  for (const [sessionId, session] of sessions) {
+    const field = `packaging.selection.sessions.${sessionId}`;
+    const sceneCount = scenes.get(sessionId)?.size ?? 0;
+    const generatedOutputACount = (outputsA.get(sessionId) ?? []).filter(
+      (output) => output.status === OutputStatus.Generated,
+    ).length;
+    const generatedOutputBCount = (outputsB.get(sessionId) ?? []).filter(
+      (output) => output.status === OutputStatus.Generated,
+    ).length;
+    const coverGenerated = covers.get(sessionId)?.status === OutputStatus.Generated;
+    const allOutputAReady = sceneCount > 0 && generatedOutputACount === sceneCount;
+
+    if (session.requestedSceneCount !== sceneCount) {
+      return { code: 'EXPORT_NUM_001', field: `${field}.requestedSceneCount` };
+    }
+    if (session.generationProgress.totalScenes !== sceneCount) {
+      return { code: 'EXPORT_NUM_001', field: `${field}.generationProgress.totalScenes` };
+    }
+    if (session.generationProgress.outputAGenerated !== generatedOutputACount) {
+      return {
+        code: 'EXPORT_NUM_001',
+        field: `${field}.generationProgress.outputAGenerated`,
+      };
+    }
+    if (session.generationProgress.outputBGenerated !== generatedOutputBCount) {
+      return {
+        code: 'EXPORT_NUM_001',
+        field: `${field}.generationProgress.outputBGenerated`,
+      };
+    }
+    if (session.generationProgress.coverGenerated !== coverGenerated) {
+      return {
+        code: 'EXPORT_COVER_001',
+        field: `${field}.generationProgress.coverGenerated`,
+      };
+    }
+    if (session.generationProgress.allOutputAReady !== allOutputAReady) {
+      return {
+        code: 'EXPORT_MISSINGA_001',
+        field: `${field}.generationProgress.allOutputAReady`,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Construct the final trusted plan field-by-field. The only normalized field
+ * is generated-cover source order, which is rebuilt from canonical numbering.
+ */
+function planWithCanonicalCovers(plan: ExportPlan, covers: readonly SelectedCover[]): ExportPlan {
+  const selection = Object.freeze({
+    project: plan.selection.project,
+    sessions: plan.selection.sessions,
+    groups: plan.selection.groups,
+    groupPlans: plan.selection.groupPlans,
+    scenes: plan.selection.scenes,
+    outputsA: plan.selection.outputsA,
+    outputsB: plan.selection.outputsB,
+    covers: Object.freeze([...covers]),
+    artworks: plan.selection.artworks,
+    products: plan.selection.products,
+    seasons: plan.selection.seasons,
+    colors: plan.selection.colors,
+    validationResults: plan.selection.validationResults,
+    versions: plan.selection.versions,
+    executionPlans: plan.selection.executionPlans,
+    ordered: plan.selection.ordered,
+  });
+  return Object.freeze({
+    scope: plan.scope,
+    numbering: plan.numbering,
+    groupNumbering: plan.groupNumbering,
+    selection,
+    provenance: plan.provenance,
+    omissions: plan.omissions,
+    issues: plan.issues,
+    partial: plan.partial,
+  });
 }
 
 function validateArtworks(plan: ExportPlan): Map<string, SelectedArtwork> | null {
@@ -1686,6 +1973,9 @@ export function validatePackagePlanIntegrity(
     return failure('EXPORT_CORRUPT_001', 'packaging.input');
   }
 
+  const scopeKindField = preciseScopeKindFieldFailure(trustedPlan);
+  if (scopeKindField) return failure('EXPORT_SCOPE_001', scopeKindField);
+
   if (hasScopePolicyViolation(trustedPlan)) {
     return failure('EXPORT_SCOPE_001', 'packaging.scope.policy');
   }
@@ -1728,7 +2018,19 @@ export function validatePackagePlanIntegrity(
     return failure('EXPORT_LINK_001', 'packaging.selection.executionPlans');
   }
   const covers = validateCovers(trustedPlan, numbering.grouped);
-  if (!covers) return failure('EXPORT_COVER_001', 'packaging.selection.covers');
+  if (!covers.ok) return failure(covers.code, covers.field);
+
+  const sessionMetadataFailure = preciseSessionMetadataFailure(
+    sessions.sessions,
+    scenes,
+    outputsA.grouped,
+    outputsB.grouped,
+    covers.covers,
+  );
+  if (sessionMetadataFailure) {
+    return failure(sessionMetadataFailure.code, sessionMetadataFailure.field);
+  }
+
   const versions = validateVersions(trustedPlan);
   if (!versions) return failure('EXPORT_SCOPE_001', 'packaging.selection.versions');
   const validationResults = validateValidationResults(trustedPlan, sessions.sessions);
@@ -1751,6 +2053,7 @@ export function validatePackagePlanIntegrity(
   for (const groupPlan of trustedPlan.selection.groupPlans) {
     pushGrouped(groupPlans, groupPlan.sessionId, groupPlan);
   }
+  trustedPlan = planWithCanonicalCovers(trustedPlan, covers.canonicalCovers);
 
   return {
     ok: true,
@@ -1764,7 +2067,7 @@ export function validatePackagePlanIntegrity(
       sessionsById: readonlyMap(sessions.sessions),
       scenesBySessionAndId: readonlyNestedMap(scenes),
       executionPlansBySession: readonlyMap(executionPlans),
-      coversBySession: readonlyMap(covers),
+      coversBySession: readonlyMap(covers.covers),
       groupPlansBySession: readonlyGroupedMap(groupPlans),
       artworksById: readonlyMap(artworks),
       productsById: readonlyMap(supporting.products),

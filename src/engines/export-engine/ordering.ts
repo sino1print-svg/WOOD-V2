@@ -91,7 +91,7 @@ export function buildExportNumbering(
         sceneNumber,
         outputAId: scene.outputA.id,
         outputALabel: outputALabel(sceneNumber),
-        ...(isPlainRecord(scene.outputB)
+        ...(isPlainRecord(scene.outputB) && resolved.scopeDetail !== 'cover'
           ? {
               outputBId: scene.outputB.id,
               outputBLabel: outputBLabel(sceneNumber),

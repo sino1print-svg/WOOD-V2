@@ -48,6 +48,7 @@ import { makeEntry, type PackageEntry } from './package-entry';
 import {
   hasDuplicateScopeIdentifiers as hasDuplicateScopeIdentifiersWithIndex,
   hasScopePolicyViolation as hasScopePolicyViolationWithIndex,
+  preciseScopeKindFieldFailure as preciseScopeKindFieldFailureWithIndex,
   validatePackagePlanIntegrity as validatePackagePlanIntegrityWithIndex,
   type PackagePlanValidationResult,
   type ValidatedPackagePlanIndex,
@@ -143,6 +144,11 @@ export function hasScopePolicyViolation(plan: ExportPlan): boolean {
  */
 export function hasDuplicateScopeIdentifiers(plan: ExportPlan): boolean {
   return hasDuplicateScopeIdentifiersWithIndex(plan);
+}
+
+/** Returns the first exact illegal non-empty scope array for early fail-closed scopes. */
+export function preciseScopeKindFieldFailure(plan: ExportPlan): string | null {
+  return preciseScopeKindFieldFailureWithIndex(plan);
 }
 
 /**
