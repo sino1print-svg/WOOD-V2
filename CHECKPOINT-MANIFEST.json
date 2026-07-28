@@ -1,69 +1,25 @@
 {
-  "package": "mockup-photoshoot-director-phase10-batch10.4-final-residual-corrective",
-  "phase": "Phase 10 — Batch 10.4 — Final Residual Corrective",
-  "status": "APPROVED — PHASE 10 BATCH 10.4 COMPLETE — READY FOR INDEPENDENT AUDIT",
-  "contents": "Complete runnable source tree (git-ready). node_modules/dist/coverage/.git excluded; run npm ci to install.",
+  "package": "mockup-photoshoot-director-phase10.5-runnable-application-integration",
+  "phase": "Phase 10.5 — Runnable Application Integration & Smoke-Test Release",
+  "status": "PASS — PHASE 10.5 RUNNABLE APPLICATION INTEGRATION COMPLETE — READY FOR INDEPENDENT AUDIT",
+  "contents": "Complete runnable source tree (git-ready). node_modules/dist/coverage/.git excluded; run npm ci to install, npm run dev to open the tool.",
   "authoritative_base": {
-    "filename": "mockup-photoshoot-director-phase10-batch10.4-final-controlled-merge(1).zip",
-    "sha256": "fee4a1b05767638f4a14a36dc337a7f89adb3a80056cbc599e7234e576b3ca0d",
-    "declared_commit": "56ee895f973b318496dd35b452fe345cfcca91c6",
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-final-residual-corrective.zip",
+    "sha256": "1b934cc55b7b14b0a7a7efa6f445a5287fd6f53a3472c201c40622490551e898",
+    "declared_commit": "bab7e3a69d0203671674f4d268efc606e4968a5d",
     "verified_on_receipt": true,
     "used_as_only_implementation_base": true
   },
-  "local_git_import": {
-    "commit": "041a68c9b4c60933983534aa1134ac8ee20e85da",
-    "note": "The authoritative source checkpoint intentionally excluded .git; this commit imports its byte-verified source snapshot without replacing it from another implementation."
-  },
-  "acceptance_oracle_commit": "323b9f9",
-  "implementation_commit": "91840e5",
-  "corrective_scope": "Closes only F1 scope-field allowlisting, F2 generated-cover source completeness, and F3 session counter/readiness reconciliation. Batch 10.5 was not started.",
-  "closure_summary": {
-    "F1": "Every actual resolved-scope kind has an explicit allowed ID-array matrix. A non-empty disallowed array fails closed with EXPORT_SCOPE_001 and its exact packaging.scope field before artifact construction.",
-    "F2": "A generated cover requires a non-empty, duplicate-free, canonically labelled, complete Output A set matching trusted numbering and mockupCount. Output B and unknown/incomplete sources fail closed.",
-    "F3": "Selected session scene/output/cover counters and readiness flags are derived from validated source entities, then reconciled again against the trusted package-plan indexes before any summary or manifest is built.",
-    "trusted_projection": "All downstream content, README, session summary, project JSON, manifest, checksums, and ZIP construction consume the detached successful validation projection.",
-    "determinism": "Equivalent cover-source order and reordered source records canonicalize to identical bytes and SHA-256; inputs remain unmodified."
-  },
-  "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over 411 regular files, excluding node_modules/dist/coverage/.git/cache/logs and CHECKSUMS.txt itself)",
+  "integration_scope": "Wires the existing, approved engines into a runnable browser tool: real Generate through the Orchestrator (validation, rule, palette, print-area, Scene Engine planning, Prompt Engine composition), separate Output A / Output B results with independent copy, PNG artwork registration through the real Asset Store, and TXT/Markdown/readable JSON/canonical JSON export through the official Export Engine plan and formatters with real browser downloads. Phase 11 was not started; docs/spec is untouched.",
+  "engine_integration_fixes": [
+    "scene-engine/engine.ts: planned Output A garment now uses product.type, which the Prompt Engine's compose contract validates (proven cross-engine integration defect; no test weakened)."
+  ],
+  "determinism": "All generation and export timestamps derive from the canonical application time constant; identical inputs reproduce identical prompts and identical export bytes (verified in tests and in the real-browser smoke runs).",
+  "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over every tracked file except node_modules/dist/coverage/.git/cache/logs and CHECKSUMS.txt itself)",
   "source_tree_combined_hash": {
     "command": "node scripts/source-tree-hash.mjs",
-    "value": "f876c6da4713fe582cdd8471186985a0828d9c5c39e8d319a0971e371a329993  410 files",
-    "note": "CHECKPOINT-MANIFEST.json and CHECKSUMS.txt are excluded to avoid self-reference. Two consecutive runs produced the identical value."
+    "value": "2a317b4a65698c4bff0d58d45255e58ebf9707b519388e25278965e5915e5c63  423 files",
+    "note": "Excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt by exact path to avoid self-referential cycles."
   },
-  "test_evidence": {
-    "test_files": 130,
-    "tests_passed": 2576,
-    "tests_skipped": 0,
-    "tests_todo": 0,
-    "final_residual_oracle_tests": 69,
-    "packaging_tests": 491,
-    "external_fixture_rows": 10,
-    "external_tamper_rows": 2,
-    "external_structural_rows": 1
-  },
-  "docs_spec": {
-    "file_count": 12,
-    "byte_identity_against_authoritative_base": "12/12",
-    "modified": false
-  },
-  "tests_deleted": false,
-  "coverage_weakened": false,
-  "batch_10_5_started": false,
-  "changed_files": {
-    "modified_source": [
-      "src/engines/export-engine/ordering.ts",
-      "src/engines/export-engine/scope.ts",
-      "src/engines/export-engine/selection.ts",
-      "src/engines/export-engine/validation.ts",
-      "src/export/packaging/package-plan-validation.ts",
-      "src/export/packaging/package-plan.ts",
-      "src/export/packaging/package.ts"
-    ],
-    "added_tests": ["test/export-engine/packaging/final-residual-corrective-acceptance.test.ts"],
-    "modified_test_oracles": [
-      "test/export-engine/golden/expected-digests.ts",
-      "test/export-engine/packaging/golden-digests.ts"
-    ],
-    "modified_metadata": ["CHECKPOINT-MANIFEST.json", "CHECKSUMS.txt"]
-  }
+  "verification": "npm ci, npm audit, npm audit --omit=dev, typecheck, lint, format:check, test (137 files / 2626 tests), verify:determinism, build, verify, verify:full, and verify:zip:external all exit 0; the §11 manual smoke scenario passed in real Chromium against both `npm run dev` and `npm run build && npm run preview` with zero console errors."
 }
