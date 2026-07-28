@@ -1,0 +1,116 @@
+{
+  "package": "mockup-photoshoot-director-phase10-batch10.4-final-controlled-merge",
+  "phase": "Phase 10 — Batch 10.4 — Final Controlled Merge and Closure",
+  "status": "PHASE 10 — BATCH 10.4 FINAL CONTROLLED MERGE COMPLETE — READY FOR INDEPENDENT AUDIT",
+  "created_at_utc": "2026-07-27T00:16:31Z",
+  "contents": "Complete runnable working tree (git-ready). node_modules/dist/coverage/.git excluded; run npm ci to install.",
+  "starting_checkpoint": {
+    "programmer": "Programmer 1",
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-consolidated-final-corrective-deficiency-closure.zip",
+    "sha256": "a1b94d6f1ad0ab9906c3180f012d32cc27c5d1f121292bbbd6f9695d74557ed5",
+    "declared_commit": "b5fe0f72e5dff8586e22ba78ca4b7f149ce24ce6",
+    "verified_on_receipt": true,
+    "used_as_only_implementation_base": true
+  },
+  "reference_checkpoint": {
+    "programmer": "Programmer 2",
+    "filename": "mockup-photoshoot-director-phase10-batch10.4-consolidated-final-deficiency-closure.zip",
+    "sha256": "28d156ceff2b1d1ecc6d0c45af77fa3e99684324a08f0e90f10d7fe0089618eb",
+    "declared_commit": "0e247751df21c753e4330ed1974ca411172bc813",
+    "verified_on_receipt": true,
+    "usage": "Read-only comparison and selective reimplementation of only the five approved ideas; no full-tree replacement or automatic merge."
+  },
+  "selective_reference_ideas": [
+    "Selected Output B requires the matching selected Output A inside the trusted validation boundary.",
+    "The external verifier imports the authoritative validateExportManifestShape implementation.",
+    "The external verifier imports the authoritative compareUtf8 implementation for canonical ordering.",
+    "Extracted-file reconciliation is isolated in a typechecked TypeScript module.",
+    "External verifier scripts use .mts and are covered by the project typecheck."
+  ],
+  "corrective_scope": "Closes only the frozen Phase 10 Batch 10.4 final controlled-merge contract. No Batch 10.5, Clipboard, Download, cancellation delivery, Backup/Restore, Prompt Pack, Export Center, persistence-write, browser-filesystem, or external-integration implementation was started.",
+  "closure_summary": {
+    "typed_boundary": "validatePackagePlanIntegrity(plan, limits) returns an immutable ValidatedPackagePlanIndex on success; nested session/scene and session/group maps replace composite string keys.",
+    "complete_projection": "Project, sessions, scenes, numbering, A/B outputs, groups, group plans, group numbering, execution plans, covers, artworks, versions, validation results, ordered items, issues, omissions, provenance, and formatter-facing values are structurally validated and snapshotted before content construction.",
+    "pair_linkage": "Every selected B in pair-bearing scopes requires exactly one matching selected A, exact numbering identity, exact IDs/labels, and canonical order. Failures map to EXPORT_LINK_001 / packaging.selection.outputsB with no package bytes.",
+    "partial_evidence": "Policy-required identities must have the selected artifact or exact approved omission/registered-issue evidence. B may be omitted while A remains where policy permits; B may not survive without A.",
+    "group_reconciliation": "Groups, group plans, group numbering, authoritative group/scene numbers, identities, cardinality, membership, and order are reconciled exactly.",
+    "trusted_consumers": "Content, README, manifest, checksums, paths, and pair emission consume only the successful validated projection and trusted snapshots.",
+    "zip_writer": "Programmer 1's strict descriptor-snapshot and exception-safe deterministic ZIP boundary is preserved unchanged.",
+    "external_verifier": "All 10 golden fixtures plus checksum tamper, manifest tamper, and reordered-hostile fixtures are verified independently on disk with ZIP structure, extracted ledger, authoritative manifest schema, path/kind, size, digest, missing, and extra-file reconciliation."
+  },
+  "architecture_note": "src/export/packaging/package-plan-validation.ts is the single untrusted-to-trusted boundary. Downstream packaging code does not read raw plan.selection, plan.numbering, plan.groupNumbering, plan.provenance, or plan.scope arrays/objects after successful validation.",
+  "archived_release_metadata": [
+    {
+      "file": "ARCHIVE-PHASE9-MANIFEST.json",
+      "was": "MANIFEST.json",
+      "note": "Phase 9 release manifest, superseded — does not describe the current tree."
+    },
+    {
+      "file": "ARCHIVE-PHASE7-RELEASE-MANIFEST.json",
+      "was": "RELEASE-MANIFEST.json",
+      "note": "Phase 7 Third Corrective release manifest, superseded — does not describe the current tree."
+    },
+    {
+      "file": "ARCHIVE-SHA256SUMS-PRE-PHASE10.txt",
+      "was": "SHA256SUMS.txt",
+      "note": "Pre-Phase-10 checksum listing, superseded by CHECKSUMS.txt."
+    }
+  ],
+  "current_checksum_listing": "CHECKSUMS.txt (per-file SHA-256 over the full working tree, excluding node_modules/dist/coverage/.git/cache/logs and CHECKSUMS.txt itself, 410 files including this manifest)",
+  "source_tree_combined_hash": {
+    "command": "node scripts/source-tree-hash.mjs",
+    "value": "13e86745a5cf4b2f8223cba11f35662dfb6de65f4e17a602bf9b643d571d95f2  409 files",
+    "note": "The script excludes CHECKPOINT-MANIFEST.json and CHECKSUMS.txt to avoid self-reference. Two consecutive runs produced the identical value."
+  },
+  "test_evidence": {
+    "test_files": 129,
+    "tests_passed": 2507,
+    "tests_skipped": 0,
+    "tests_todo": 0,
+    "acceptance_oracle_tests": 52,
+    "consolidated_oracle_tests": 101,
+    "partial_evidence_tests": 5,
+    "external_fixture_rows": 10,
+    "external_tamper_rows": 2,
+    "external_structural_rows": 1
+  },
+  "docs_spec": {
+    "file_count": 12,
+    "byte_identity_against_programmer_1_starting_checkpoint": "12/12",
+    "modified": false
+  },
+  "used_force": false,
+  "tests_deleted": false,
+  "coverage_weakened": false,
+  "batch_10_5_started": false,
+  "changed_files_this_merge": {
+    "modified_source": [
+      "src/engines/export-engine/engine.ts",
+      "src/engines/export-engine/selection.ts",
+      "src/export/failures.ts",
+      "src/export/packaging/content.ts",
+      "src/export/packaging/manifest.ts",
+      "src/export/packaging/package-plan-validation.ts",
+      "src/export/packaging/package-plan.ts",
+      "src/export/packaging/package.ts"
+    ],
+    "preserved_source": ["src/export/packaging/zip-writer.ts"],
+    "added_scripts": [
+      "scripts/verify-golden-zips-external.mts",
+      "scripts/zip-external-verification.mts"
+    ],
+    "removed_scripts": ["scripts/verify-golden-zips-external.mjs"],
+    "modified_tests": [
+      "test/export-engine/packaging/architecture.test.ts",
+      "test/export-engine/packaging/consolidated-final-corrective.test.ts",
+      "test/export-engine/packaging/golden-zip-dump.test.ts",
+      "test/export-engine/packaging/manifest.test.ts"
+    ],
+    "added_tests": [
+      "test/export-engine/packaging/final-controlled-merge-acceptance.test.ts",
+      "test/export-engine/packaging/final-controlled-merge-partial-evidence.test.ts"
+    ],
+    "modified_tooling": ["package.json", "package-lock.json", "tsconfig.json"],
+    "modified_metadata": ["CHECKPOINT-MANIFEST.json", "CHECKSUMS.txt"]
+  }
+}

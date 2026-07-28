@@ -23,7 +23,8 @@
     "verify:full": "npm run audit:full && npm run audit:prod && npm run typecheck && npm run lint && npm run format:check && npm run test && npm run verify:determinism && npm run build",
     "audit:full": "node scripts/npm-audit-retry.mjs full",
     "audit:prod": "node scripts/npm-audit-retry.mjs prod",
-    "hash:source-tree": "node scripts/source-tree-hash.mjs"
+    "hash:source-tree": "node scripts/source-tree-hash.mjs",
+    "verify:zip:external": "vite-node scripts/verify-golden-zips-external.mts"
   },
   "dependencies": {
     "ajv": "8.20.0",
@@ -45,6 +46,7 @@
     "prettier": "3.3.3",
     "typescript": "5.6.3",
     "vite": "6.4.3",
+    "vite-node": "3.2.4",
     "vitest": "3.2.6"
   }
 }

@@ -9,6 +9,7 @@ import {
   PersistenceMode,
   RetentionPolicyKind,
 } from '../shared/domain-model';
+import type { ExportSafetyLimits } from '../shared/contracts';
 
 export interface AppConfig {
   readonly applicationVersion: string;
@@ -60,6 +61,7 @@ export interface AppConfig {
       readonly maxMetadataChunkBytes: number;
       readonly maxCrcBytes: number;
     };
+    readonly export: ExportSafetyLimits;
   };
 }
 
@@ -112,6 +114,18 @@ export const APP_CONFIG: Readonly<AppConfig> = Object.freeze({
       maxChunkLength: 64 * 1024 * 1024,
       maxMetadataChunkBytes: 1 * 1024 * 1024,
       maxCrcBytes: 128 * 1024 * 1024,
+    },
+    export: {
+      maxPathSegment: 60,
+      maxPathLength: 200,
+      maxArtifactBytes: 128 * 1024 * 1024,
+      maxJsonBytes: 128 * 1024 * 1024,
+      maxJsonDepth: 64,
+      maxZipEntries: 10_000,
+      maxArchiveBytes: 256 * 1024 * 1024,
+      maxUncompressedBytes: 512 * 1024 * 1024,
+      maxCompressionRatio: 100,
+      maxClipboardBytes: 16 * 1024 * 1024,
     },
   },
 });

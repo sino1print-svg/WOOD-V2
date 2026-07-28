@@ -1,6 +1,4 @@
-/**
- * Export Engine — NOT implemented in Phase 0. Structure/placeholder only.
- * Implementation deferred per 12_IMPLEMENTATION_GUIDE §9 build order (09_EXPORT_ENGINE).
- * No engine or business logic may live here in Phase 0.
- */
-export {};
+/** Export Coordinator public surface through Phase 10, Batch 10.2. */
+export { createExportPlan } from './engine';
+export type * from './events';
+export type * from './types';

@@ -61,6 +61,9 @@ describe('shared/contracts is TYPE-ONLY (no runtime values)', () => {
 describe('export operational refinement layer (IMPL §5)', () => {
   it('runtime mapping lives in src/export/format-mapping.ts, not in contracts/domain', () => {
     expect(read('src/export/format-mapping.ts')).toMatch(/export const PERSISTED_EXPORT_FORMAT/);
+    expect(read('src/export/index.ts')).toContain(
+      "export { PERSISTED_EXPORT_FORMAT } from './format-mapping'",
+    );
     expect(read('src/shared/domain-model/export-manifest.ts')).not.toContain(
       'ExportDeliveryFormat',
     );
@@ -76,5 +79,14 @@ describe('export operational refinement layer (IMPL §5)', () => {
     const body = block.slice(0, block.indexOf('}'));
     expect(body).not.toContain('clipboard');
     expect(body).not.toContain('markdown');
+  });
+  it('rich Export contracts are additive and separate from the legacy interface', () => {
+    const legacy = read('src/shared/contracts/engine-contracts.ts');
+    const rich = read('src/shared/contracts/export-contracts.ts');
+    expect(legacy).toContain('interface ExportEngineContract');
+    expect(legacy).not.toContain('interface ExportCoordinatorContract');
+    expect(rich).toContain('interface ExportCoordinatorContract');
+    expect(rich).toContain('interface ExportEngineInput');
+    expect(rich).toContain('type ExportEngineResult');
   });
 });
