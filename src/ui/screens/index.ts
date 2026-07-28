@@ -1,6 +1,8 @@
 /**
- * UI Screens — NOT implemented in Phase 0. Structure/placeholder only.
- * Implementation deferred per 12_IMPLEMENTATION_GUIDE §9 build order (07_UI_ENGINE §3).
- * No engine or business logic may live here in Phase 0.
+ * UI Screens — Phase 10.5 status.
+ * The application is deliberately a single Prompt Center screen
+ * (`src/ui/app-shell/AppShell.tsx`) per the Phase 10.5 scope: no router and
+ * no additional screens ship in this phase. This module stays an intentional
+ * empty namespace; multi-screen composition is outside the Phase 10.5 scope.
  */
 export {};

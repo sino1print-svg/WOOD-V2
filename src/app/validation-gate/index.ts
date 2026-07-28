@@ -1,6 +1,9 @@
 /**
- * Validation Gate — NOT implemented in Phase 0. Structure/placeholder only.
- * Implementation deferred per 12_IMPLEMENTATION_GUIDE §9 build order (WF §16).
- * No engine or business logic may live here in Phase 0.
+ * Validation Gate — Phase 10.5 status.
+ * Draft validation runs in the UI Engine (`validateDraft`) and domain-mapping
+ * validation runs in the Orchestrator's validation port before any engine is
+ * invoked. A dedicated standalone validation-gate engine remains deferred and
+ * is not part of the Phase 10.5 primary workflow; this module stays an
+ * intentional empty namespace.
  */
 export {};

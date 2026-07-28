@@ -1,6 +1,19 @@
 /**
- * Commands — NOT implemented in Phase 0. Structure/placeholder only.
- * Implementation deferred per 12_IMPLEMENTATION_GUIDE §9 build order (WF §5).
- * No engine or business logic may live here in Phase 0.
+ * Application Commands — Phase 10.5 Runnable Application Integration.
+ *
+ * Official commands invoked by the UI: PNG artwork registration and export
+ * document construction over the approved Export Engine and formatters.
  */
-export {};
+export {
+  registerArtworkPng,
+  type ArtworkRegistrationFailure,
+  type ArtworkRegistrationResult,
+} from './artwork';
+export {
+  EXPORT_FILE_NAMES,
+  buildExportDocuments,
+  buildExportEngineInput,
+  type ExportDocumentKind,
+  type ExportDocumentSuccess,
+  type ExportDocumentsResult,
+} from './export';

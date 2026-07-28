@@ -179,7 +179,10 @@ export function planScenes(input: SceneEngineInput): SceneEngineResult {
 
     const outputAId = `${sceneId}-A` as OutputAId;
     const outputBId = `${sceneId}-B` as OutputBId;
-    const outputA = planOutputA(sceneId, outputAId, product.name, colorId, view);
+    // Integration contract (Phase 10.5): the Prompt Engine validates
+    // `outputA.garment === product.type`, so the planned garment noun is the
+    // product's garment type, not its display name.
+    const outputA = planOutputA(sceneId, outputAId, product.type, colorId, view);
     const artworkId = input.artworkIdsByProduct?.get(candidate.productId);
     const outputBPlan = planOutputB(sceneId, outputBId, outputAId, outputA.contentHash, artworkId);
     if (outputBPlan.warning) warnings.push(outputBPlan.warning);

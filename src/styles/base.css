@@ -81,6 +81,8 @@ body {
   font: inherit;
   display: flex;
   justify-content: space-between;
+}
+button.nav-item {
   cursor: pointer;
 }
 .nav-item span {
@@ -536,4 +538,138 @@ textarea {
   .stepper {
     display: none;
   }
+}
+
+/* --------------------------------------------------------------------------
+ * Phase 10.5 — Prompt Center results, copy, export, and artwork upload.
+ * -------------------------------------------------------------------------- */
+.results-panel {
+  margin-top: 22px;
+}
+.scene-result {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 14px;
+  display: grid;
+  gap: 14px;
+  background: #fdfcfa;
+}
+.scene-result__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.scene-result__header small {
+  color: var(--muted);
+  direction: ltr;
+}
+.prompt-block {
+  display: grid;
+  gap: 8px;
+}
+.prompt-block__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.prompt-block__header h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.prompt-block__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.prompt-block-a {
+  border-inline-start: 4px solid var(--accent);
+  padding-inline-start: 10px;
+}
+.prompt-block-b {
+  border-inline-start: 4px solid var(--success);
+  padding-inline-start: 10px;
+}
+.prompt-text {
+  width: 100%;
+  min-height: 150px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: #fff;
+  color: var(--ink);
+  resize: vertical;
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: isolate;
+}
+.copy-status {
+  font-size: 12px;
+}
+.copy-status.ok {
+  color: var(--success);
+}
+.copy-status.danger {
+  color: var(--danger);
+}
+.export-panel .export-buttons {
+  display: grid;
+  gap: 8px;
+}
+.export-button {
+  width: 100%;
+}
+.export-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.helper.danger {
+  color: var(--danger);
+}
+.helper.success {
+  color: var(--success);
+}
+.failures-panel {
+  margin-top: 22px;
+  border-inline-start: 4px solid var(--danger);
+}
+.failures-panel h3 {
+  margin: 0 0 8px;
+}
+.failures-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.failures-panel li {
+  display: grid;
+  gap: 2px;
+}
+.failures-panel li strong {
+  color: var(--danger);
+  font-size: 12px;
+  direction: ltr;
+  text-align: right;
+}
+.failures-panel li.warning strong {
+  color: var(--accent);
+}
+.artwork-upload {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.artwork-upload input[type='file'] {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
 }

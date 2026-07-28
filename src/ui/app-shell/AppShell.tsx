@@ -1,62 +1,95 @@
-import { useMemo, useState } from 'react';
-import { Audience, DisplayMethod, GarmentView } from '../../shared/domain-model';
-import type { ColorId, ProductId, SeasonId } from '../../shared/domain-model';
+/**
+ * AppShell — Phase 10.5 Runnable Application Integration.
+ *
+ * The single Prompt Center screen. The form drives the approved UI Engine
+ * state machine; Generate invokes the official application controller
+ * (Orchestrator → real engines); results render Output A and Output B as
+ * separate, individually copyable prompts; export downloads real formatter
+ * bytes. Generation happens only on explicit button press — no effects.
+ */
+import { useMemo, useRef, useState } from 'react';
+import { Audience } from '../../shared/domain-model';
+import type { Artwork, ColorId, ProductId, SeasonId } from '../../shared/domain-model';
 import { AR } from '../../shared/i18n';
 import {
+  clearGeneratedOutputs,
+  copyExact,
   createInitialUiState,
   isOutputStale,
+  restoreUiState,
+  saveUiState,
   updateDraft,
   validateDraft,
-  type UiCatalog,
   type UiState,
 } from '../../ui-engine';
+import { createAppController, APP_UI_CATALOG } from '../../app/orchestrator';
+import { buildExportDocuments, registerArtworkPng } from '../../app/commands';
+import {
+  createBrowserClipboardPort,
+  createBrowserDownloadPort,
+  createUiStatePersistencePort,
+  downloadDocument,
+} from '../../app/adapters';
+import { ExportBar, FailuresPanel, ResultsPanel, UI_TEXT, type ExportKind } from '../components';
+import {
+  blockingFailures,
+  buildResultRows,
+  exportEnabled,
+  resultsPhase,
+  warningFailures,
+  type CopyStatusMap,
+} from '../view-state';
 
-const catalog: UiCatalog = {
-  products: [
-    {
-      id: 'product-bella-3001' as ProductId,
-      nameAr: 'Bella Canvas 3001',
-      allowedViews: [GarmentView.Front, GarmentView.Back],
-      allowedDisplayMethods: [
-        DisplayMethod.OnModel,
-        DisplayMethod.Hanger,
-        DisplayMethod.FlatLay,
-        DisplayMethod.Folded,
-      ],
-      allowedAudiences: [Audience.Adult, Audience.Unisex, Audience.All],
-      allowedColorIds: ['color-white', 'color-black', 'color-sand', 'color-gray'] as ColorId[],
-    },
-    {
-      id: 'product-kids-tee' as ProductId,
-      nameAr: 'تيشيرت أطفال',
-      allowedViews: [GarmentView.Front, GarmentView.Back],
-      allowedDisplayMethods: [DisplayMethod.OnModel, DisplayMethod.Hanger, DisplayMethod.FlatLay],
-      allowedAudiences: [Audience.Kids, Audience.All],
-      allowedColorIds: ['color-white', 'color-black', 'color-sand'] as ColorId[],
-    },
-  ],
-  colors: [
-    { id: 'color-white' as ColorId, nameAr: 'أبيض', hex: '#ffffff' },
-    { id: 'color-black' as ColorId, nameAr: 'أسود', hex: '#111111' },
-    { id: 'color-gray' as ColorId, nameAr: 'رمادي ميلانج', hex: '#b8b8b8' },
-    { id: 'color-sand' as ColorId, nameAr: 'رملي', hex: '#d9c3a3' },
-  ],
-  seasons: [
-    { id: 'season-halloween' as SeasonId, nameAr: 'الهالوين' },
-    { id: 'season-christmas' as SeasonId, nameAr: 'الكريسماس' },
-    { id: 'season-minimal' as SeasonId, nameAr: 'استوديو بسيط' },
-  ],
-};
+const catalog = APP_UI_CATALOG;
 
 export function AppShell(): JSX.Element {
   const [state, setState] = useState<UiState>(() => createInitialUiState());
+  const [artwork, setArtwork] = useState<Artwork | null>(null);
+  const [artworkError, setArtworkError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<CopyStatusMap>({});
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [lastExported, setLastExported] = useState<ExportKind | null>(null);
+  const [persistenceNote, setPersistenceNote] = useState<string | null>(null);
+
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const generatingRef = useRef(false);
+
+  const controller = useMemo(() => createAppController(artwork), [artwork]);
+  const clipboard = useMemo(() => createBrowserClipboardPort(), []);
+  const downloads = useMemo(() => createBrowserDownloadPort(), []);
+  const persistence = useMemo(() => createUiStatePersistencePort(), []);
+
   const failures = useMemo(() => validateDraft(state.draft, catalog), [state.draft]);
   const stale = isOutputStale(state);
+  const busy = state.phase === 'generating-scenes' || state.phase === 'generating-prompts';
   const productTotal = state.draft.products.reduce((sum, product) => sum + product.quantity, 0);
+  const rows = useMemo(() => buildResultRows(state), [state]);
+
+  function publish(next: UiState): void {
+    stateRef.current = next;
+    setState(next);
+  }
+
+  function resetFeedback(): void {
+    setCopyStatus({});
+    setExportError(null);
+    setLastExported(null);
+    setPersistenceNote(null);
+  }
 
   function patch(patchValue: Partial<UiState['draft']>): void {
-    setState((current) => updateDraft(current, patchValue));
+    resetFeedback();
+    // The approved state machine forbids treating previous outputs as current
+    // once the draft changes: clear generated outputs first, then edit.
+    const current = stateRef.current;
+    const base =
+      current.prompts.length > 0 || current.scenes.length > 0
+        ? clearGeneratedOutputs(current)
+        : current;
+    publish(updateDraft(base, patchValue));
   }
+
   function addProduct(productId: ProductId): void {
     if (state.draft.products.some((item) => item.productId === productId)) return;
     const product = catalog.products.find((item) => item.id === productId);
@@ -73,13 +106,95 @@ export function AppShell(): JSX.Element {
       ],
     });
   }
+
   function validate(): void {
-    setState((current) =>
-      failures.length
-        ? { ...current, phase: 'invalid', failures }
-        : { ...current, phase: 'ready', failures: [], validatedFingerprint: 'validated' },
-    );
+    resetFeedback();
+    publish(controller.validate(stateRef.current));
   }
+
+  async function generate(): Promise<void> {
+    if (generatingRef.current || busy) return;
+    generatingRef.current = true;
+    resetFeedback();
+    try {
+      const next = await controller.generate(stateRef.current, {
+        getCurrentState: () => stateRef.current,
+        publishPending: (pending) => {
+          publish(pending);
+        },
+        publishFailure: (failed) => {
+          publish(failed);
+        },
+      });
+      publish(next);
+    } finally {
+      generatingRef.current = false;
+    }
+  }
+
+  async function copyPrompt(promptId: string): Promise<void> {
+    const prompt = stateRef.current.prompts.find((item) => item.id === promptId);
+    if (!prompt) return;
+    const failure = await copyExact(clipboard, prompt.promptText);
+    setCopyStatus({ [promptId]: failure === null ? 'copied' : 'failed' });
+  }
+
+  function exportDocuments(kind: ExportKind): void {
+    setExportError(null);
+    setLastExported(null);
+    const result = buildExportDocuments(stateRef.current, artwork);
+    if (!result.ok) {
+      const first = result.failures[0];
+      setExportError(`${first?.code ?? 'EXPORT_FAILED'} — ${first?.message ?? 'تعذر التصدير.'}`);
+      return;
+    }
+    const entry = result.documents.find((document) => document.kind === kind);
+    if (!entry) {
+      setExportError('EXPORT_FORMAT_UNAVAILABLE — الصيغة المطلوبة غير متاحة.');
+      return;
+    }
+    const downloadFailure = downloadDocument(downloads, entry.fileName, entry.document);
+    if (downloadFailure !== null) {
+      setExportError(`${downloadFailure.code} — ${downloadFailure.messageAr}`);
+      return;
+    }
+    setLastExported(kind);
+  }
+
+  async function uploadArtwork(file: File | null): Promise<void> {
+    setArtworkError(null);
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const result = await registerArtworkPng(new Uint8Array(buffer), file.name);
+      if (!result.ok) {
+        setArtwork(null);
+        setArtworkError(`${result.failure.code} — ${result.failure.messageAr}`);
+        return;
+      }
+      resetFeedback();
+      setArtwork(result.artwork);
+    } catch {
+      setArtwork(null);
+      setArtworkError('ASSET_READ_FAILED — تعذر قراءة الملف من المتصفح.');
+    }
+  }
+
+  async function saveSession(): Promise<void> {
+    resetFeedback();
+    const next = await saveUiState(persistence, stateRef.current);
+    publish(next);
+    setPersistenceNote(next.phase === 'failure' ? null : 'تم حفظ الجلسة محليًا.');
+  }
+
+  async function restoreSession(): Promise<void> {
+    resetFeedback();
+    const next = await restoreUiState(persistence);
+    publish(next);
+    setPersistenceNote(next.failures.length > 0 ? null : 'تم استرجاع الجلسة المحفوظة.');
+  }
+
+  const generateDisabled = failures.length > 0 || busy;
 
   return (
     <div className="workspace" dir="rtl" lang="ar">
@@ -92,19 +207,12 @@ export function AppShell(): JSX.Element {
           </div>
         </div>
         <nav>
-          {Object.values(AR.nav).map((label, index) => (
-            <button
-              key={label}
-              className={index === 1 ? 'nav-item active' : 'nav-item'}
-              disabled={index > 1}
-            >
-              {label}
-              {index > 1 && <span>قريبًا</span>}
-            </button>
-          ))}
+          <span className="nav-item active" aria-current="page">
+            مركز البرومبتات
+          </span>
         </nav>
         <div className="sidebar__footer">
-          Phase 6 · UI Engine
+          Phase 10.5 · تكامل تشغيلي
           <br />
           <span>واجهة عربية حتمية</span>
         </div>
@@ -112,35 +220,44 @@ export function AppShell(): JSX.Element {
       <main className="main-area">
         <header className="topbar">
           <div>
-            <p className="eyebrow">مشروع جديد</p>
+            <p className="eyebrow">مركز البرومبتات</p>
             <h1>{state.draft.title || 'جلسة موك أب جديدة'}</h1>
           </div>
           <div className="topbar__actions">
-            <button className="ghost">{AR.actions.restore}</button>
-            <button className="ghost">{AR.actions.save}</button>
+            <button className="ghost" type="button" onClick={() => void restoreSession()}>
+              {AR.actions.restore}
+            </button>
+            <button
+              className="ghost"
+              type="button"
+              disabled={!(state.phase === 'prompts-ready' && state.dirty)}
+              title="الحفظ متاح بعد توليد ناجح غير محفوظ (عقد آلة الحالة المعتمدة)."
+              onClick={() => void saveSession()}
+            >
+              {AR.actions.save}
+            </button>
           </div>
         </header>
-        <div className="stepper" aria-label="مراحل سير العمل">
-          {['الإعداد', 'المنتجات', 'التحقق', 'التخطيط', 'البرومبتات'].map((item, index) => (
-            <div className={index < 2 ? 'step active' : 'step'} key={item}>
-              <span>{index + 1}</span>
-              {item}
-            </div>
-          ))}
-        </div>
         <section
           className={`state-banner ${stale ? 'warning' : failures.length ? 'neutral' : 'success'}`}
           aria-live="polite"
         >
           <strong>
-            {stale
-              ? AR.status.stale
-              : state.phase === 'ready'
-                ? AR.status.ready
-                : AR.status.editing}
+            {busy
+              ? UI_TEXT.generateBusy
+              : stale
+                ? AR.status.stale
+                : state.phase === 'prompts-ready' || state.phase === 'ready'
+                  ? AR.status.ready
+                  : AR.status.editing}
           </strong>
           <span>التوليد يدوي فقط، ولن يحدث عند تغيير أي اختيار.</span>
         </section>
+        {persistenceNote !== null && (
+          <section className="state-banner success" role="status">
+            <strong>{persistenceNote}</strong>
+          </section>
+        )}
         <div className="content-grid">
           <section className="panel form-panel">
             <div className="panel__header">
@@ -254,6 +371,7 @@ export function AppShell(): JSX.Element {
                       </div>
                       <div className="number-control compact">
                         <button
+                          type="button"
                           onClick={() =>
                             patch({
                               products: state.draft.products.map((item) =>
@@ -268,6 +386,7 @@ export function AppShell(): JSX.Element {
                         </button>
                         <input value={product.quantity} readOnly />
                         <button
+                          type="button"
                           onClick={() =>
                             patch({
                               products: state.draft.products.map((item) =>
@@ -282,6 +401,7 @@ export function AppShell(): JSX.Element {
                         </button>
                       </div>
                       <button
+                        type="button"
                         className="icon-button"
                         aria-label="إزالة المنتج"
                         onClick={() =>
@@ -306,13 +426,14 @@ export function AppShell(): JSX.Element {
                   const selected = state.draft.colorIds.includes(color.id);
                   return (
                     <button
+                      type="button"
                       key={color.id}
                       className={selected ? 'swatch selected' : 'swatch'}
                       aria-pressed={selected}
                       onClick={() =>
                         patch({
                           colorIds: selected
-                            ? state.draft.colorIds.filter((id) => id !== color.id)
+                            ? state.draft.colorIds.filter((id: ColorId) => id !== color.id)
                             : [...state.draft.colorIds, color.id],
                         })
                       }
@@ -324,11 +445,52 @@ export function AppShell(): JSX.Element {
                 })}
               </div>
             </div>
+            <div className="subsection">
+              <h3>ملف الأعمال الفنية (PNG)</h3>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={state.draft.includeOutputB}
+                  onChange={(event) => patch({ includeOutputB: event.target.checked })}
+                />
+                <span>{AR.fields.includeB}</span>
+              </label>
+              {state.draft.includeOutputB && (
+                <div className="artwork-upload">
+                  <label>
+                    <span>ملف PNG الشفاف المستخدم في معاينة B</span>
+                    <input
+                      type="file"
+                      accept="image/png"
+                      aria-label="رفع ملف PNG"
+                      onChange={(event) => void uploadArtwork(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  {artwork !== null && (
+                    <p className="helper success" role="status" dir="ltr">
+                      {artwork.fileName} · {artwork.widthPx}×{artwork.heightPx}px
+                    </p>
+                  )}
+                  {artworkError !== null && (
+                    <p className="helper danger" role="alert">
+                      {artworkError}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="form-actions">
-              <button className="ghost" onClick={() => setState(createInitialUiState())}>
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => {
+                  resetFeedback();
+                  publish(createInitialUiState());
+                }}
+              >
                 {AR.actions.reset}
               </button>
-              <button className="primary" onClick={validate}>
+              <button className="primary" type="button" onClick={validate}>
                 {AR.actions.validate}
               </button>
             </div>
@@ -337,7 +499,7 @@ export function AppShell(): JSX.Element {
             <section className="panel summary-panel">
               <div className="panel__header">
                 <div>
-                  <p className="eyebrow">LIVE</p>
+                  <p className="eyebrow">02</p>
                   <h2>{AR.sections.summary}</h2>
                 </div>
               </div>
@@ -361,14 +523,6 @@ export function AppShell(): JSX.Element {
                   <dd>{state.draft.colorIds.length}</dd>
                 </div>
               </dl>
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={state.draft.includeOutputB}
-                  onChange={(event) => patch({ includeOutputB: event.target.checked })}
-                />
-                <span>{AR.fields.includeB}</span>
-              </label>
             </section>
             <section className="panel validation-panel">
               <div className="panel__header">
@@ -389,13 +543,31 @@ export function AppShell(): JSX.Element {
               ) : (
                 <div className="success-state">جميع الحقول الأساسية صالحة.</div>
               )}
-              <button className="primary full" disabled={failures.length > 0}>
-                {AR.actions.generate}
+              <button
+                className="primary full"
+                type="button"
+                disabled={generateDisabled}
+                onClick={() => void generate()}
+              >
+                {busy ? UI_TEXT.generateBusy : AR.actions.generate}
               </button>
               <p className="helper">يتم استدعاء المحركات المعتمدة فقط بعد الضغط الصريح.</p>
             </section>
+            <ExportBar
+              enabled={exportEnabled(state)}
+              onExport={exportDocuments}
+              exportError={exportError}
+              lastExported={lastExported}
+            />
           </aside>
         </div>
+        <FailuresPanel failures={blockingFailures(state)} warnings={warningFailures(state)} />
+        <ResultsPanel
+          phase={resultsPhase(state)}
+          rows={rows}
+          copyStatus={copyStatus}
+          onCopy={(promptId) => void copyPrompt(promptId)}
+        />
       </main>
     </div>
   );
