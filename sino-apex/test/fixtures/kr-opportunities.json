@@ -1,0 +1,512 @@
+{
+  "clusters": [
+    {
+      "audience": "Women",
+      "cluster_key": "trend_5e7997ae73579c6dfe70049d",
+      "cluster_rank": 1,
+      "color": "Burgundy",
+      "concept_engine": {
+        "ip_risk": "LOW",
+        "policy": "creation-intelligence-v2"
+      },
+      "days": 1,
+      "evidence_ids": [
+        "evi_849498636b1040c94ec59cd6",
+        "evi_bb9364e0291231a3dd5fdbca",
+        "evi_29b5deae2d43e504b5e47059"
+      ],
+      "evidence_summary": {
+        "evidence_quality_score": 42,
+        "signal_type_count": 1,
+        "signal_types": ["unknown"]
+      },
+      "example_count": 3,
+      "fit": "Oversized",
+      "global_radar": {
+        "china_radar": {
+          "market": "CN",
+          "note": "No lawful real China evidence in this cluster",
+          "status": "NO EVIDENCE"
+        },
+        "historical_migration": {
+          "confidence": "LOW",
+          "method": "historical-lead-lag-v1",
+          "origin_breakout": null,
+          "origin_market": null,
+          "state": "INSUFFICIENT_HISTORY",
+          "target_lags": [],
+          "timelines": {
+            "US": {
+              "first_breakout": "2026-08-25",
+              "first_early": "2026-08-25",
+              "first_seen": "2026-08-25",
+              "first_strong": null,
+              "last_seen": "2026-08-25",
+              "latest_examples": 3,
+              "latest_growth": 48,
+              "latest_score": 91,
+              "latest_stage": "BREAKOUT",
+              "observation_days": 1,
+              "series": [
+                {
+                  "audience": "Women",
+                  "cluster_key": "trend_5e7997ae73579c6dfe70049d",
+                  "color": "Burgundy",
+                  "day": "2026-08-25",
+                  "example_count": 3,
+                  "fit": "Oversized",
+                  "growth": 48,
+                  "market": "US",
+                  "name": "Burgundy Varsity Sweater",
+                  "pattern": "Varsity",
+                  "score": 91,
+                  "source_count": 3,
+                  "style": "Retro collegiate",
+                  "type": "Sweater"
+                }
+              ]
+            }
+          }
+        },
+        "market_count": 1,
+        "markets": ["US"],
+        "migration": {
+          "confidence": "LOW",
+          "method": "cross-market-evidence-v1",
+          "observations": {
+            "US": {
+              "evidence_quality": 42,
+              "example_count": 3,
+              "growth": 48,
+              "market": "US",
+              "maturity": "GROWING",
+              "profile": {
+                "currency": "USD",
+                "hemisphere": "north",
+                "language": "en",
+                "market_id": "US",
+                "name": "United States",
+                "region": "North America",
+                "season_profile": "north-temperate"
+              },
+              "score": 91,
+              "signal_types": ["unknown"]
+            }
+          },
+          "origin_market": "US",
+          "state": "INSUFFICIENT_CROSS_MARKET_EVIDENCE",
+          "target_opportunities": []
+        }
+      },
+      "growth": 48,
+      "id": "cluster-1",
+      "image_url": "",
+      "lifecycle": "Exploding",
+      "market_count": 1,
+      "market_history": {
+        "US": {
+          "change_pct": null,
+          "confidence": "LOW",
+          "history_days": 1,
+          "score_delta": null,
+          "series": [
+            {
+              "audience": "Women",
+              "cluster_key": "trend_5e7997ae73579c6dfe70049d",
+              "color": "Burgundy",
+              "day": "2026-08-25",
+              "example_count": 3,
+              "fit": "Oversized",
+              "growth": 48,
+              "market": "US",
+              "name": "Burgundy Varsity Sweater",
+              "pattern": "Varsity",
+              "score": 91,
+              "source_count": 3,
+              "style": "Retro collegiate",
+              "type": "Sweater"
+            }
+          ],
+          "state": "Baseline",
+          "velocity": 0
+        }
+      },
+      "markets": ["US"],
+      "momentum": {
+        "change_pct": null,
+        "confidence": "LOW",
+        "history_days": 1,
+        "score_delta": null,
+        "series": [
+          {
+            "audience": "Women",
+            "cluster_key": "trend_5e7997ae73579c6dfe70049d",
+            "color": "Burgundy",
+            "day": "2026-08-25",
+            "example_count": 3,
+            "fit": "Oversized",
+            "growth": 48,
+            "market": "GLOBAL",
+            "name": "Burgundy Varsity Sweater",
+            "pattern": "Varsity",
+            "score": 99,
+            "source_count": 3,
+            "style": "Retro collegiate",
+            "type": "Sweater"
+          }
+        ],
+        "state": "Baseline",
+        "velocity": 0
+      },
+      "name": "Burgundy Varsity Sweater",
+      "neck": "Crew",
+      "opportunity": {
+        "components": {
+          "competition": 26,
+          "demand": 44,
+          "evidence": 42,
+          "novelty": 88,
+          "opportunity_gap": 18,
+          "saturation": 33,
+          "seasonality": 28,
+          "trend_strength": 99
+        },
+        "confidence": "LOW",
+        "decision": "WATCH",
+        "opportunity_gap": 18,
+        "reasons": [
+          "positive opportunity gap (+18)",
+          "high novelty 88/100",
+          "off-season fit 28/100",
+          "low evidence/history confidence"
+        ],
+        "saturation_risk": 33,
+        "score": 53
+      },
+      "opportunity_rank": 1,
+      "pattern": "Varsity",
+      "score": 99,
+      "secondary": "Cream",
+      "semantic_trend_id": "trend_5e7997ae73579c6dfe70049d",
+      "source": "Etsy + Pinterest + Google Trends",
+      "source_count": 3,
+      "style": "Retro collegiate",
+      "texture": "Medium knit",
+      "trend_truth": {
+        "competition": {
+          "breadth": 75,
+          "density": 19,
+          "method": "supply-density-v1",
+          "score": 26,
+          "state": "LOW",
+          "velocity": 0
+        },
+        "confidence": {
+          "label": "LOW",
+          "score": 32
+        },
+        "demand": {
+          "growth": 48,
+          "method": "multi-signal-demand-v1",
+          "momentum": 45,
+          "score": 44,
+          "signal_diversity": 33,
+          "state": "LOW"
+        },
+        "method": "trend-truth-v1",
+        "novelty": {
+          "first_seen": "2026-08-25",
+          "history_days": 1,
+          "label": "NEW",
+          "method": "historical-recurrence-v1",
+          "score": 88
+        },
+        "opportunity_gap": 18,
+        "saturation": {
+          "method": "competition-novelty-lifecycle-v1",
+          "risk": "LOW",
+          "score": 33
+        },
+        "schema_version": "1.0.0",
+        "seasonality": {
+          "by_market": {
+            "US": {
+              "hemisphere": "north",
+              "label": "OFF-SEASON",
+              "market": "US",
+              "method": "market-calendar-v2",
+              "month": 8,
+              "region": "North America",
+              "season_fit": 28,
+              "seasonal_penalty": 27
+            }
+          },
+          "hemisphere": "north",
+          "label": "OFF-SEASON",
+          "market": "US",
+          "markets": ["US"],
+          "method": "market-calendar-v2",
+          "month": 8,
+          "region": "North America",
+          "season_fit": 28,
+          "seasonal_penalty": 27
+        }
+      },
+      "type": "Sweater"
+    },
+    {
+      "audience": "Men",
+      "cluster_key": "trend_977ee71c1dd5c9c3c203bc87",
+      "cluster_rank": 2,
+      "color": "Forest",
+      "concept_engine": {
+        "ip_risk": "LOW",
+        "policy": "creation-intelligence-v2"
+      },
+      "days": 2,
+      "evidence_ids": ["evi_3cb2bedc75feda8c3d0b9db8"],
+      "evidence_summary": {
+        "evidence_quality_score": 42,
+        "signal_type_count": 1,
+        "signal_types": ["unknown"]
+      },
+      "example_count": 1,
+      "fit": "Relaxed",
+      "global_radar": {
+        "china_radar": {
+          "market": "CN",
+          "note": "No lawful real China evidence in this cluster",
+          "status": "NO EVIDENCE"
+        },
+        "historical_migration": {
+          "confidence": "LOW",
+          "method": "historical-lead-lag-v1",
+          "origin_breakout": null,
+          "origin_market": null,
+          "state": "INSUFFICIENT_HISTORY",
+          "target_lags": [],
+          "timelines": {
+            "US": {
+              "first_breakout": null,
+              "first_early": "2026-08-25",
+              "first_seen": "2026-08-25",
+              "first_strong": null,
+              "last_seen": "2026-08-25",
+              "latest_examples": 1,
+              "latest_growth": 30,
+              "latest_score": 80,
+              "latest_stage": "EARLY",
+              "observation_days": 1,
+              "series": [
+                {
+                  "audience": "Men",
+                  "cluster_key": "trend_977ee71c1dd5c9c3c203bc87",
+                  "color": "Forest",
+                  "day": "2026-08-25",
+                  "example_count": 1,
+                  "fit": "Relaxed",
+                  "growth": 30,
+                  "market": "US",
+                  "name": "Forest Cable Sweater",
+                  "pattern": "Cable",
+                  "score": 80,
+                  "source_count": 1,
+                  "style": "Heritage outdoor",
+                  "type": "Sweater"
+                }
+              ]
+            }
+          }
+        },
+        "market_count": 1,
+        "markets": ["US"],
+        "migration": {
+          "confidence": "LOW",
+          "method": "cross-market-evidence-v1",
+          "observations": {
+            "US": {
+              "evidence_quality": 42,
+              "example_count": 1,
+              "growth": 30,
+              "market": "US",
+              "maturity": "GROWING",
+              "profile": {
+                "currency": "USD",
+                "hemisphere": "north",
+                "language": "en",
+                "market_id": "US",
+                "name": "United States",
+                "region": "North America",
+                "season_profile": "north-temperate"
+              },
+              "score": 80,
+              "signal_types": ["unknown"]
+            }
+          },
+          "origin_market": "US",
+          "state": "INSUFFICIENT_CROSS_MARKET_EVIDENCE",
+          "target_opportunities": []
+        }
+      },
+      "growth": 30,
+      "id": "cluster-2",
+      "image_url": "",
+      "lifecycle": "Signal",
+      "market_count": 1,
+      "market_history": {
+        "US": {
+          "change_pct": null,
+          "confidence": "LOW",
+          "history_days": 1,
+          "score_delta": null,
+          "series": [
+            {
+              "audience": "Men",
+              "cluster_key": "trend_977ee71c1dd5c9c3c203bc87",
+              "color": "Forest",
+              "day": "2026-08-25",
+              "example_count": 1,
+              "fit": "Relaxed",
+              "growth": 30,
+              "market": "US",
+              "name": "Forest Cable Sweater",
+              "pattern": "Cable",
+              "score": 80,
+              "source_count": 1,
+              "style": "Heritage outdoor",
+              "type": "Sweater"
+            }
+          ],
+          "state": "Baseline",
+          "velocity": 0
+        }
+      },
+      "markets": ["US"],
+      "momentum": {
+        "change_pct": null,
+        "confidence": "LOW",
+        "history_days": 1,
+        "score_delta": null,
+        "series": [
+          {
+            "audience": "Men",
+            "cluster_key": "trend_977ee71c1dd5c9c3c203bc87",
+            "color": "Forest",
+            "day": "2026-08-25",
+            "example_count": 1,
+            "fit": "Relaxed",
+            "growth": 30,
+            "market": "GLOBAL",
+            "name": "Forest Cable Sweater",
+            "pattern": "Cable",
+            "score": 80,
+            "source_count": 1,
+            "style": "Heritage outdoor",
+            "type": "Sweater"
+          }
+        ],
+        "state": "Baseline",
+        "velocity": 0
+      },
+      "name": "Forest Cable Sweater",
+      "neck": "Crew",
+      "opportunity": {
+        "components": {
+          "competition": 9,
+          "demand": 37,
+          "evidence": 42,
+          "novelty": 88,
+          "opportunity_gap": 28,
+          "saturation": 21,
+          "seasonality": 28,
+          "trend_strength": 80
+        },
+        "confidence": "LOW",
+        "decision": "WATCH",
+        "opportunity_gap": 28,
+        "reasons": [
+          "positive opportunity gap (+28)",
+          "high novelty 88/100",
+          "off-season fit 28/100",
+          "low evidence/history confidence"
+        ],
+        "saturation_risk": 21,
+        "score": 51
+      },
+      "opportunity_rank": 2,
+      "pattern": "Cable",
+      "score": 80,
+      "secondary": "Cream",
+      "semantic_trend_id": "trend_977ee71c1dd5c9c3c203bc87",
+      "source": "Etsy",
+      "source_count": 1,
+      "style": "Heritage outdoor",
+      "texture": "Heavy cable",
+      "trend_truth": {
+        "competition": {
+          "breadth": 25,
+          "density": 6,
+          "method": "supply-density-v1",
+          "score": 9,
+          "state": "LOW",
+          "velocity": 0
+        },
+        "confidence": {
+          "label": "LOW",
+          "score": 28
+        },
+        "demand": {
+          "growth": 30,
+          "method": "multi-signal-demand-v1",
+          "momentum": 45,
+          "score": 37,
+          "signal_diversity": 33,
+          "state": "LOW"
+        },
+        "method": "trend-truth-v1",
+        "novelty": {
+          "first_seen": "2026-08-25",
+          "history_days": 1,
+          "label": "NEW",
+          "method": "historical-recurrence-v1",
+          "score": 88
+        },
+        "opportunity_gap": 28,
+        "saturation": {
+          "method": "competition-novelty-lifecycle-v1",
+          "risk": "LOW",
+          "score": 21
+        },
+        "schema_version": "1.0.0",
+        "seasonality": {
+          "by_market": {
+            "US": {
+              "hemisphere": "north",
+              "label": "OFF-SEASON",
+              "market": "US",
+              "method": "market-calendar-v2",
+              "month": 8,
+              "region": "North America",
+              "season_fit": 28,
+              "seasonal_penalty": 27
+            }
+          },
+          "hemisphere": "north",
+          "label": "OFF-SEASON",
+          "market": "US",
+          "markets": ["US"],
+          "method": "market-calendar-v2",
+          "month": 8,
+          "region": "North America",
+          "season_fit": 28,
+          "seasonal_penalty": 27
+        }
+      },
+      "type": "Sweater"
+    }
+  ],
+  "count": 2,
+  "fetched_at": "2026-08-25T17:55:44.003Z",
+  "ok": true,
+  "version": "0.21.0"
+}

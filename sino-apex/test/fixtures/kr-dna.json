@@ -1,0 +1,61 @@
+{
+  "ok": true,
+  "trend_dna": {
+    "audience": "Women",
+    "composition": {
+      "hierarchy": "hero-type + supporting-knit-elements",
+      "placement": ["front-dominant"],
+      "symmetry": "not-prescribed",
+      "visual_density": "medium"
+    },
+    "evidence": {
+      "confidence": "LOW",
+      "example_count": 3,
+      "signal_types": ["unknown"],
+      "source_count": 3
+    },
+    "fingerprint": "01a4869f5956010d5b67618f",
+    "garment": "Sweater",
+    "knit_construction": {
+      "construction_signal": "Medium knit",
+      "pattern_family": "Varsity",
+      "texture": "Medium knit"
+    },
+    "market_scope": ["US"],
+    "motif_system": {
+      "families": ["lettering", "varsity"],
+      "source_specific_marks": "excluded"
+    },
+    "palette": {
+      "primary": "Burgundy",
+      "relationship": "contrast-or-harmonized",
+      "supporting": ["Cream"]
+    },
+    "prohibited_transfer": [
+      "brand names",
+      "logos",
+      "characters",
+      "team identities",
+      "exact source wording",
+      "distinctive source artwork",
+      "exact product-photo composition",
+      "protected trade dress"
+    ],
+    "schema_version": "2.0.0",
+    "silhouette": {
+      "alternates": [],
+      "fit": "Oversized",
+      "neckline": "Crew"
+    },
+    "style_context": {
+      "primary": "Retro collegiate",
+      "related": []
+    },
+    "typography": {
+      "family_direction": "original custom display lettering",
+      "role": "display-led",
+      "source_wording": "excluded"
+    }
+  },
+  "trend_id": "cluster-1"
+}

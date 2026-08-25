@@ -1,0 +1,779 @@
+{
+  "concept_engine": {
+    "concept_count": 5,
+    "concepts": [
+      {
+        "angle": "Rebuild the validated market signal as a source-independent knitwear system with new identity, motif, composition, typography and detailing.",
+        "brief": {
+          "brief_id": "brief_4cf2a2d0c293f42ce42208c2",
+          "concept_id": "concept-1",
+          "created_from": "trend-dna-2.0",
+          "decision_context": {
+            "confidence": "LOW",
+            "market_scope": ["US"],
+            "opportunity_decision": "WATCH",
+            "opportunity_gap": 18,
+            "opportunity_score": 53,
+            "season_fit": 28
+          },
+          "generation_contract": {
+            "negative_constraints": [
+              "original identity only",
+              "no protected marks",
+              "no source wording",
+              "no exact artwork replication",
+              "change at least 3 visual axes",
+              "retain knitwear manufacturability"
+            ],
+            "output_intent": "original-knitwear-design-concept",
+            "prompt": "Create an original sweater concept for women. Palette: Burgundy + Cream. Motif: modular geometry. Composition: asymmetric chest field + sleeve echo. Typography: custom condensed athletic lettering. Knit detailing: contrast rib system. Silhouette: Oversized, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+            "provider_agnostic": true
+          },
+          "handoff": {
+            "format": "application/json",
+            "generation_not_executed": true,
+            "target": "SINO-compatible structured design brief"
+          },
+          "originality": {
+            "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+            "distinctness_score": 84,
+            "ip_risk": "LOW",
+            "policy": "abstract-recombine-distance-v2",
+            "source_abstraction": {
+              "excluded": [
+                "brand names",
+                "logos",
+                "characters",
+                "team identities",
+                "exact source wording",
+                "distinctive source artwork",
+                "exact product-photo composition",
+                "protected trade dress"
+              ],
+              "preserved": [
+                "market-validated garment category",
+                "high-level knit/pattern signal",
+                "season/market context"
+              ]
+            }
+          },
+          "product": {
+            "audience": "Women",
+            "fit": "Oversized",
+            "garment": "Sweater",
+            "knit_texture": "Medium knit",
+            "neckline": "Crew",
+            "pattern_family": "Varsity"
+          },
+          "provenance": {
+            "concept_index": 0,
+            "evidence_count": 3,
+            "source_count": 3,
+            "trend_dna_fingerprint": "01a4869f5956010d5b67618f"
+          },
+          "schema_version": "1.0.0",
+          "trend_id": "trend_5e7997ae73579c6dfe70049d",
+          "visual_system": {
+            "composition": "asymmetric chest field + sleeve echo",
+            "detailing": "contrast rib system",
+            "motif": "modular geometry",
+            "palette": ["Burgundy", "Cream"],
+            "typography": "custom condensed athletic lettering",
+            "visual_density": "medium"
+          }
+        },
+        "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+        "composition": "asymmetric chest field + sleeve echo",
+        "constraints": [
+          "original identity only",
+          "no protected marks",
+          "no source wording",
+          "no exact artwork replication",
+          "change at least 3 visual axes",
+          "retain knitwear manufacturability"
+        ],
+        "detailing": "contrast rib system",
+        "distinctness_score": 84,
+        "id": "concept-1",
+        "ip_risk": "LOW",
+        "motif": "modular geometry",
+        "name": "Signal Shift",
+        "originality_policy": "abstract-recombine-distance-v2",
+        "palette": ["Burgundy", "Cream"],
+        "prompt_brief": "Create an original sweater concept for women. Palette: Burgundy + Cream. Motif: modular geometry. Composition: asymmetric chest field + sleeve echo. Typography: custom condensed athletic lettering. Knit detailing: contrast rib system. Silhouette: Oversized, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+        "recombination_evidence": [
+          {
+            "axis": "palette",
+            "source": "observed-example",
+            "value": "Burgundy"
+          },
+          {
+            "axis": "pattern",
+            "source": "observed-example",
+            "value": "Varsity"
+          },
+          {
+            "axis": "fit",
+            "source": "observed-example",
+            "value": "Oversized"
+          }
+        ],
+        "schema_version": "2.0.0",
+        "silhouette": {
+          "fit": "Oversized",
+          "garment": "Sweater",
+          "neckline": "Crew"
+        },
+        "source_abstraction": {
+          "excluded": [
+            "brand names",
+            "logos",
+            "characters",
+            "team identities",
+            "exact source wording",
+            "distinctive source artwork",
+            "exact product-photo composition",
+            "protected trade dress"
+          ],
+          "preserved": [
+            "market-validated garment category",
+            "high-level knit/pattern signal",
+            "season/market context"
+          ]
+        },
+        "typography": "custom condensed athletic lettering"
+      },
+      {
+        "angle": "Rebuild the validated market signal as a source-independent knitwear system with new identity, motif, composition, typography and detailing.",
+        "brief": {
+          "brief_id": "brief_b41fd6258bc6d4ee04950ecf",
+          "concept_id": "concept-2",
+          "created_from": "trend-dna-2.0",
+          "decision_context": {
+            "confidence": "LOW",
+            "market_scope": ["US"],
+            "opportunity_decision": "WATCH",
+            "opportunity_gap": 18,
+            "opportunity_score": 53,
+            "season_fit": 28
+          },
+          "generation_contract": {
+            "negative_constraints": [
+              "original identity only",
+              "no protected marks",
+              "no source wording",
+              "no exact artwork replication",
+              "change at least 3 visual axes",
+              "retain knitwear manufacturability"
+            ],
+            "output_intent": "original-knitwear-design-concept",
+            "prompt": "Create an original sweater concept for women. Palette: Burgundy + Charcoal. Motif: topographic knit lines. Composition: large side-shifted motif + quiet front. Typography: wide geometric sans. Knit detailing: jacquard micro-border. Silhouette: Relaxed, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+            "provider_agnostic": true
+          },
+          "handoff": {
+            "format": "application/json",
+            "generation_not_executed": true,
+            "target": "SINO-compatible structured design brief"
+          },
+          "originality": {
+            "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+            "distinctness_score": 87,
+            "ip_risk": "LOW",
+            "policy": "abstract-recombine-distance-v2",
+            "source_abstraction": {
+              "excluded": [
+                "brand names",
+                "logos",
+                "characters",
+                "team identities",
+                "exact source wording",
+                "distinctive source artwork",
+                "exact product-photo composition",
+                "protected trade dress"
+              ],
+              "preserved": [
+                "market-validated garment category",
+                "high-level knit/pattern signal",
+                "season/market context"
+              ]
+            }
+          },
+          "product": {
+            "audience": "Women",
+            "fit": "Relaxed",
+            "garment": "Sweater",
+            "knit_texture": "Medium knit",
+            "neckline": "Crew",
+            "pattern_family": "Varsity"
+          },
+          "provenance": {
+            "concept_index": 1,
+            "evidence_count": 3,
+            "source_count": 3,
+            "trend_dna_fingerprint": "01a4869f5956010d5b67618f"
+          },
+          "schema_version": "1.0.0",
+          "trend_id": "trend_5e7997ae73579c6dfe70049d",
+          "visual_system": {
+            "composition": "large side-shifted motif + quiet front",
+            "detailing": "jacquard micro-border",
+            "motif": "topographic knit lines",
+            "palette": ["Burgundy", "Charcoal"],
+            "typography": "wide geometric sans",
+            "visual_density": "medium"
+          }
+        },
+        "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+        "composition": "large side-shifted motif + quiet front",
+        "constraints": [
+          "original identity only",
+          "no protected marks",
+          "no source wording",
+          "no exact artwork replication",
+          "change at least 3 visual axes",
+          "retain knitwear manufacturability"
+        ],
+        "detailing": "jacquard micro-border",
+        "distinctness_score": 87,
+        "id": "concept-2",
+        "ip_risk": "LOW",
+        "motif": "topographic knit lines",
+        "name": "Northline",
+        "originality_policy": "abstract-recombine-distance-v2",
+        "palette": ["Burgundy", "Charcoal"],
+        "prompt_brief": "Create an original sweater concept for women. Palette: Burgundy + Charcoal. Motif: topographic knit lines. Composition: large side-shifted motif + quiet front. Typography: wide geometric sans. Knit detailing: jacquard micro-border. Silhouette: Relaxed, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+        "recombination_evidence": [
+          {
+            "axis": "pattern",
+            "source": "observed-example",
+            "value": "Varsity"
+          },
+          {
+            "axis": "fit",
+            "source": "observed-example",
+            "value": "Oversized"
+          },
+          {
+            "axis": "texture",
+            "source": "observed-example",
+            "value": "Medium knit"
+          }
+        ],
+        "schema_version": "2.0.0",
+        "silhouette": {
+          "fit": "Relaxed",
+          "garment": "Sweater",
+          "neckline": "Crew"
+        },
+        "source_abstraction": {
+          "excluded": [
+            "brand names",
+            "logos",
+            "characters",
+            "team identities",
+            "exact source wording",
+            "distinctive source artwork",
+            "exact product-photo composition",
+            "protected trade dress"
+          ],
+          "preserved": [
+            "market-validated garment category",
+            "high-level knit/pattern signal",
+            "season/market context"
+          ]
+        },
+        "typography": "wide geometric sans"
+      },
+      {
+        "angle": "Rebuild the validated market signal as a source-independent knitwear system with new identity, motif, composition, typography and detailing.",
+        "brief": {
+          "brief_id": "brief_bdc14f67e2a50168e36cbb68",
+          "concept_id": "concept-3",
+          "created_from": "trend-dna-2.0",
+          "decision_context": {
+            "confidence": "LOW",
+            "market_scope": ["US"],
+            "opportunity_decision": "WATCH",
+            "opportunity_gap": 18,
+            "opportunity_score": 53,
+            "season_fit": 28
+          },
+          "generation_contract": {
+            "negative_constraints": [
+              "original identity only",
+              "no protected marks",
+              "no source wording",
+              "no exact artwork replication",
+              "change at least 3 visual axes",
+              "retain knitwear manufacturability"
+            ],
+            "output_intent": "original-knitwear-design-concept",
+            "prompt": "Create an original sweater concept for women. Palette: Deep Navy + Warm Ivory. Motif: micro-symbol constellation. Composition: split front modules with border rhythm. Typography: technical monospaced lettering. Knit detailing: intarsia micro-symbols. Silhouette: Oversized, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+            "provider_agnostic": true
+          },
+          "handoff": {
+            "format": "application/json",
+            "generation_not_executed": true,
+            "target": "SINO-compatible structured design brief"
+          },
+          "originality": {
+            "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+            "distinctness_score": 90,
+            "ip_risk": "LOW",
+            "policy": "abstract-recombine-distance-v2",
+            "source_abstraction": {
+              "excluded": [
+                "brand names",
+                "logos",
+                "characters",
+                "team identities",
+                "exact source wording",
+                "distinctive source artwork",
+                "exact product-photo composition",
+                "protected trade dress"
+              ],
+              "preserved": [
+                "market-validated garment category",
+                "high-level knit/pattern signal",
+                "season/market context"
+              ]
+            }
+          },
+          "product": {
+            "audience": "Women",
+            "fit": "Oversized",
+            "garment": "Sweater",
+            "knit_texture": "Medium knit",
+            "neckline": "Crew",
+            "pattern_family": "Varsity"
+          },
+          "provenance": {
+            "concept_index": 2,
+            "evidence_count": 3,
+            "source_count": 3,
+            "trend_dna_fingerprint": "01a4869f5956010d5b67618f"
+          },
+          "schema_version": "1.0.0",
+          "trend_id": "trend_5e7997ae73579c6dfe70049d",
+          "visual_system": {
+            "composition": "split front modules with border rhythm",
+            "detailing": "intarsia micro-symbols",
+            "motif": "micro-symbol constellation",
+            "palette": ["Deep Navy", "Warm Ivory"],
+            "typography": "technical monospaced lettering",
+            "visual_density": "medium"
+          }
+        },
+        "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+        "composition": "split front modules with border rhythm",
+        "constraints": [
+          "original identity only",
+          "no protected marks",
+          "no source wording",
+          "no exact artwork replication",
+          "change at least 3 visual axes",
+          "retain knitwear manufacturability"
+        ],
+        "detailing": "intarsia micro-symbols",
+        "distinctness_score": 90,
+        "id": "concept-3",
+        "ip_risk": "LOW",
+        "motif": "micro-symbol constellation",
+        "name": "Field System",
+        "originality_policy": "abstract-recombine-distance-v2",
+        "palette": ["Deep Navy", "Warm Ivory"],
+        "prompt_brief": "Create an original sweater concept for women. Palette: Deep Navy + Warm Ivory. Motif: micro-symbol constellation. Composition: split front modules with border rhythm. Typography: technical monospaced lettering. Knit detailing: intarsia micro-symbols. Silhouette: Oversized, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+        "recombination_evidence": [
+          {
+            "axis": "fit",
+            "source": "observed-example",
+            "value": "Oversized"
+          },
+          {
+            "axis": "texture",
+            "source": "observed-example",
+            "value": "Medium knit"
+          },
+          {
+            "axis": "style",
+            "source": "observed-example",
+            "value": "Retro collegiate"
+          }
+        ],
+        "schema_version": "2.0.0",
+        "silhouette": {
+          "fit": "Oversized",
+          "garment": "Sweater",
+          "neckline": "Crew"
+        },
+        "source_abstraction": {
+          "excluded": [
+            "brand names",
+            "logos",
+            "characters",
+            "team identities",
+            "exact source wording",
+            "distinctive source artwork",
+            "exact product-photo composition",
+            "protected trade dress"
+          ],
+          "preserved": [
+            "market-validated garment category",
+            "high-level knit/pattern signal",
+            "season/market context"
+          ]
+        },
+        "typography": "technical monospaced lettering"
+      },
+      {
+        "angle": "Rebuild the validated market signal as a source-independent knitwear system with new identity, motif, composition, typography and detailing.",
+        "brief": {
+          "brief_id": "brief_b5b65ceb2aa3332f51f667cf",
+          "concept_id": "concept-4",
+          "created_from": "trend-dna-2.0",
+          "decision_context": {
+            "confidence": "LOW",
+            "market_scope": ["US"],
+            "opportunity_decision": "WATCH",
+            "opportunity_gap": 18,
+            "opportunity_score": 53,
+            "season_fit": 28
+          },
+          "generation_contract": {
+            "negative_constraints": [
+              "original identity only",
+              "no protected marks",
+              "no source wording",
+              "no exact artwork replication",
+              "change at least 3 visual axes",
+              "retain knitwear manufacturability"
+            ],
+            "output_intent": "original-knitwear-design-concept",
+            "prompt": "Create an original sweater concept for women. Palette: Forest Green + Sand. Motif: offset stripe architecture. Composition: vertical offset system with hem detail. Typography: soft grotesk capitals. Knit detailing: tonal texture zoning. Silhouette: Relaxed, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+            "provider_agnostic": true
+          },
+          "handoff": {
+            "format": "application/json",
+            "generation_not_executed": true,
+            "target": "SINO-compatible structured design brief"
+          },
+          "originality": {
+            "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+            "distinctness_score": 93,
+            "ip_risk": "LOW",
+            "policy": "abstract-recombine-distance-v2",
+            "source_abstraction": {
+              "excluded": [
+                "brand names",
+                "logos",
+                "characters",
+                "team identities",
+                "exact source wording",
+                "distinctive source artwork",
+                "exact product-photo composition",
+                "protected trade dress"
+              ],
+              "preserved": [
+                "market-validated garment category",
+                "high-level knit/pattern signal",
+                "season/market context"
+              ]
+            }
+          },
+          "product": {
+            "audience": "Women",
+            "fit": "Relaxed",
+            "garment": "Sweater",
+            "knit_texture": "Medium knit",
+            "neckline": "Crew",
+            "pattern_family": "Varsity"
+          },
+          "provenance": {
+            "concept_index": 3,
+            "evidence_count": 3,
+            "source_count": 3,
+            "trend_dna_fingerprint": "01a4869f5956010d5b67618f"
+          },
+          "schema_version": "1.0.0",
+          "trend_id": "trend_5e7997ae73579c6dfe70049d",
+          "visual_system": {
+            "composition": "vertical offset system with hem detail",
+            "detailing": "tonal texture zoning",
+            "motif": "offset stripe architecture",
+            "palette": ["Forest Green", "Sand"],
+            "typography": "soft grotesk capitals",
+            "visual_density": "medium"
+          }
+        },
+        "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+        "composition": "vertical offset system with hem detail",
+        "constraints": [
+          "original identity only",
+          "no protected marks",
+          "no source wording",
+          "no exact artwork replication",
+          "change at least 3 visual axes",
+          "retain knitwear manufacturability"
+        ],
+        "detailing": "tonal texture zoning",
+        "distinctness_score": 93,
+        "id": "concept-4",
+        "ip_risk": "LOW",
+        "motif": "offset stripe architecture",
+        "name": "Knit Circuit",
+        "originality_policy": "abstract-recombine-distance-v2",
+        "palette": ["Forest Green", "Sand"],
+        "prompt_brief": "Create an original sweater concept for women. Palette: Forest Green + Sand. Motif: offset stripe architecture. Composition: vertical offset system with hem detail. Typography: soft grotesk capitals. Knit detailing: tonal texture zoning. Silhouette: Relaxed, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+        "recombination_evidence": [
+          {
+            "axis": "texture",
+            "source": "observed-example",
+            "value": "Medium knit"
+          },
+          {
+            "axis": "style",
+            "source": "observed-example",
+            "value": "Retro collegiate"
+          },
+          {
+            "axis": "palette",
+            "source": "observed-example",
+            "value": "Burgundy"
+          }
+        ],
+        "schema_version": "2.0.0",
+        "silhouette": {
+          "fit": "Relaxed",
+          "garment": "Sweater",
+          "neckline": "Crew"
+        },
+        "source_abstraction": {
+          "excluded": [
+            "brand names",
+            "logos",
+            "characters",
+            "team identities",
+            "exact source wording",
+            "distinctive source artwork",
+            "exact product-photo composition",
+            "protected trade dress"
+          ],
+          "preserved": [
+            "market-validated garment category",
+            "high-level knit/pattern signal",
+            "season/market context"
+          ]
+        },
+        "typography": "soft grotesk capitals"
+      },
+      {
+        "angle": "Rebuild the validated market signal as a source-independent knitwear system with new identity, motif, composition, typography and detailing.",
+        "brief": {
+          "brief_id": "brief_9bf629d5eb29bee046c0e4e2",
+          "concept_id": "concept-5",
+          "created_from": "trend-dna-2.0",
+          "decision_context": {
+            "confidence": "LOW",
+            "market_scope": ["US"],
+            "opportunity_decision": "WATCH",
+            "opportunity_gap": 18,
+            "opportunity_score": 53,
+            "season_fit": 28
+          },
+          "generation_contract": {
+            "negative_constraints": [
+              "original identity only",
+              "no protected marks",
+              "no source wording",
+              "no exact artwork replication",
+              "change at least 3 visual axes",
+              "retain knitwear manufacturability"
+            ],
+            "output_intent": "original-knitwear-design-concept",
+            "prompt": "Create an original sweater concept for women. Palette: Chocolate + Soft Blue. Motif: abstract woven crest-free marks. Composition: wide central field with micro corner marks. Typography: custom block lettering with open counters. Knit detailing: embroidered micro-detail only. Silhouette: Oversized, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+            "provider_agnostic": true
+          },
+          "handoff": {
+            "format": "application/json",
+            "generation_not_executed": true,
+            "target": "SINO-compatible structured design brief"
+          },
+          "originality": {
+            "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+            "distinctness_score": 96,
+            "ip_risk": "LOW",
+            "policy": "abstract-recombine-distance-v2",
+            "source_abstraction": {
+              "excluded": [
+                "brand names",
+                "logos",
+                "characters",
+                "team identities",
+                "exact source wording",
+                "distinctive source artwork",
+                "exact product-photo composition",
+                "protected trade dress"
+              ],
+              "preserved": [
+                "market-validated garment category",
+                "high-level knit/pattern signal",
+                "season/market context"
+              ]
+            }
+          },
+          "product": {
+            "audience": "Women",
+            "fit": "Oversized",
+            "garment": "Sweater",
+            "knit_texture": "Medium knit",
+            "neckline": "Crew",
+            "pattern_family": "Varsity"
+          },
+          "provenance": {
+            "concept_index": 4,
+            "evidence_count": 3,
+            "source_count": 3,
+            "trend_dna_fingerprint": "01a4869f5956010d5b67618f"
+          },
+          "schema_version": "1.0.0",
+          "trend_id": "trend_5e7997ae73579c6dfe70049d",
+          "visual_system": {
+            "composition": "wide central field with micro corner marks",
+            "detailing": "embroidered micro-detail only",
+            "motif": "abstract woven crest-free marks",
+            "palette": ["Chocolate", "Soft Blue"],
+            "typography": "custom block lettering with open counters",
+            "visual_density": "medium"
+          }
+        },
+        "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+        "composition": "wide central field with micro corner marks",
+        "constraints": [
+          "original identity only",
+          "no protected marks",
+          "no source wording",
+          "no exact artwork replication",
+          "change at least 3 visual axes",
+          "retain knitwear manufacturability"
+        ],
+        "detailing": "embroidered micro-detail only",
+        "distinctness_score": 96,
+        "id": "concept-5",
+        "ip_risk": "LOW",
+        "motif": "abstract woven crest-free marks",
+        "name": "Studio Mark",
+        "originality_policy": "abstract-recombine-distance-v2",
+        "palette": ["Chocolate", "Soft Blue"],
+        "prompt_brief": "Create an original sweater concept for women. Palette: Chocolate + Soft Blue. Motif: abstract woven crest-free marks. Composition: wide central field with micro corner marks. Typography: custom block lettering with open counters. Knit detailing: embroidered micro-detail only. Silhouette: Oversized, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+        "recombination_evidence": [
+          {
+            "axis": "style",
+            "source": "observed-example",
+            "value": "Retro collegiate"
+          },
+          {
+            "axis": "palette",
+            "source": "observed-example",
+            "value": "Burgundy"
+          },
+          {
+            "axis": "pattern",
+            "source": "observed-example",
+            "value": "Varsity"
+          }
+        ],
+        "schema_version": "2.0.0",
+        "silhouette": {
+          "fit": "Oversized",
+          "garment": "Sweater",
+          "neckline": "Crew"
+        },
+        "source_abstraction": {
+          "excluded": [
+            "brand names",
+            "logos",
+            "characters",
+            "team identities",
+            "exact source wording",
+            "distinctive source artwork",
+            "exact product-photo composition",
+            "protected trade dress"
+          ],
+          "preserved": [
+            "market-validated garment category",
+            "high-level knit/pattern signal",
+            "season/market context"
+          ]
+        },
+        "typography": "custom block lettering with open counters"
+      }
+    ],
+    "configured": true,
+    "ip_risk": "LOW",
+    "policy": "creation-intelligence-v2",
+    "protected_signals": [],
+    "recombination": {
+      "policy": "abstract-recombine-distance-v2",
+      "pool_size": 17
+    },
+    "trend_dna": {
+      "audience": "Women",
+      "composition": {
+        "hierarchy": "hero-type + supporting-knit-elements",
+        "placement": ["front-dominant"],
+        "symmetry": "not-prescribed",
+        "visual_density": "medium"
+      },
+      "evidence": {
+        "confidence": "LOW",
+        "example_count": 3,
+        "signal_types": ["unknown"],
+        "source_count": 3
+      },
+      "fingerprint": "01a4869f5956010d5b67618f",
+      "garment": "Sweater",
+      "knit_construction": {
+        "construction_signal": "Medium knit",
+        "pattern_family": "Varsity",
+        "texture": "Medium knit"
+      },
+      "market_scope": ["US"],
+      "motif_system": {
+        "families": ["lettering", "varsity"],
+        "source_specific_marks": "excluded"
+      },
+      "palette": {
+        "primary": "Burgundy",
+        "relationship": "contrast-or-harmonized",
+        "supporting": ["Cream"]
+      },
+      "prohibited_transfer": [
+        "brand names",
+        "logos",
+        "characters",
+        "team identities",
+        "exact source wording",
+        "distinctive source artwork",
+        "exact product-photo composition",
+        "protected trade dress"
+      ],
+      "schema_version": "2.0.0",
+      "silhouette": {
+        "alternates": [],
+        "fit": "Oversized",
+        "neckline": "Crew"
+      },
+      "style_context": {
+        "primary": "Retro collegiate",
+        "related": []
+      },
+      "typography": {
+        "family_direction": "original custom display lettering",
+        "role": "display-led",
+        "source_wording": "excluded"
+      }
+    }
+  },
+  "ok": true,
+  "trend_id": "cluster-1"
+}
