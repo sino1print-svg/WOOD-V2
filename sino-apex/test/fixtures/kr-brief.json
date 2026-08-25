@@ -1,0 +1,82 @@
+{
+  "brief": {
+    "brief_id": "brief_4cf2a2d0c293f42ce42208c2",
+    "concept_id": "concept-1",
+    "created_from": "trend-dna-2.0",
+    "decision_context": {
+      "confidence": "LOW",
+      "market_scope": ["US"],
+      "opportunity_decision": "WATCH",
+      "opportunity_gap": 18,
+      "opportunity_score": 53,
+      "season_fit": 28
+    },
+    "generation_contract": {
+      "negative_constraints": [
+        "original identity only",
+        "no protected marks",
+        "no source wording",
+        "no exact artwork replication",
+        "change at least 3 visual axes",
+        "retain knitwear manufacturability"
+      ],
+      "output_intent": "original-knitwear-design-concept",
+      "prompt": "Create an original sweater concept for women. Palette: Burgundy + Cream. Motif: modular geometry. Composition: asymmetric chest field + sleeve echo. Typography: custom condensed athletic lettering. Knit detailing: contrast rib system. Silhouette: Oversized, Crew. Preserve only abstract trend evidence (Varsity, Medium knit, Retro collegiate); do not reproduce brand names, logos, characters, source wording, exact artwork, or protected trade dress.",
+      "provider_agnostic": true
+    },
+    "handoff": {
+      "format": "application/json",
+      "generation_not_executed": true,
+      "target": "SINO-compatible structured design brief"
+    },
+    "originality": {
+      "changed_axes": ["palette", "motif", "composition", "typography", "detailing"],
+      "distinctness_score": 84,
+      "ip_risk": "LOW",
+      "policy": "abstract-recombine-distance-v2",
+      "source_abstraction": {
+        "excluded": [
+          "brand names",
+          "logos",
+          "characters",
+          "team identities",
+          "exact source wording",
+          "distinctive source artwork",
+          "exact product-photo composition",
+          "protected trade dress"
+        ],
+        "preserved": [
+          "market-validated garment category",
+          "high-level knit/pattern signal",
+          "season/market context"
+        ]
+      }
+    },
+    "product": {
+      "audience": "Women",
+      "fit": "Oversized",
+      "garment": "Sweater",
+      "knit_texture": "Medium knit",
+      "neckline": "Crew",
+      "pattern_family": "Varsity"
+    },
+    "provenance": {
+      "concept_index": 0,
+      "evidence_count": 3,
+      "source_count": 3,
+      "trend_dna_fingerprint": "01a4869f5956010d5b67618f"
+    },
+    "schema_version": "1.0.0",
+    "trend_id": "trend_5e7997ae73579c6dfe70049d",
+    "visual_system": {
+      "composition": "asymmetric chest field + sleeve echo",
+      "detailing": "contrast rib system",
+      "motif": "modular geometry",
+      "palette": ["Burgundy", "Cream"],
+      "typography": "custom condensed athletic lettering",
+      "visual_density": "medium"
+    }
+  },
+  "ok": true,
+  "trend_id": "cluster-1"
+}
